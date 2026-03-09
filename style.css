@@ -1,0 +1,749 @@
+* {
+  box-sizing: border-box;
+  font-family: Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  height: 100vh;
+  background: radial-gradient(circle, #111, #000);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  overflow: hidden;
+}
+
+.game {
+  width: 330px;
+  text-align: center;
+}
+
+/* BUTTON AS TEXT */
+#rngButton {
+  cursor: pointer;
+  display: inline-block;
+  font-size: 20px;
+  font-weight: bold;
+  background: linear-gradient(90deg, #4da6ff, #b84dff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  padding: 12px 20px;
+  border: 2px solid #4da6ff;
+  border-radius: 12px;
+  transition: transform 0.25s ease, background 0.25s ease, text-shadow 0.25s ease;
+  user-select: none;
+}
+
+#rngButton:hover {
+  transform: scale(1.12);
+  background: linear-gradient(90deg, #b84dff, #4da6ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 10px rgba(184, 77, 255, 0.7), 0 0 20px rgba(77, 166, 255, 0.7);
+}
+
+#rngButton.disabled {
+  pointer-events: none;
+  opacity: 0.5;
+  transform: none;
+  text-shadow: none;
+}
+
+/* BUTTON AS TEXT */
+#quickRollBtn {
+  cursor: pointer;
+  display: inline-block;
+  font-size: 10px;
+  font-weight: bold;
+  background: linear-gradient(90deg, #4da6ff, #b84dff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  padding: 12px 20px;
+  border: 2px solid #4da6ff;
+  border-radius: 12px;
+  transition: transform 0.25s ease, background 0.25s ease, text-shadow 0.25s ease;
+  user-select: none;
+}
+
+#quickRollBtn:hover {
+  transform: scale(1.12);
+  background: linear-gradient(90deg, #b84dff, #4da6ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 10px rgba(184, 77, 255, 0.7), 0 0 20px rgba(77, 166, 255, 0.7);
+}
+
+#quickRollBtn.disabled {
+  pointer-events: none;
+  opacity: 0.5;
+  transform: none;
+  text-shadow: none;
+}
+
+/* COOL DOWN BAR */
+.cooldown-bar {
+  width: 100%;
+  height: 8px;
+  background: #222;
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 10px 0;
+}
+
+#cooldownFill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #4da6ff, #b84dff);
+}
+
+/* MEME DISPLAY */
+#memeImg {
+  width: 140px;
+  height: 140px;
+  object-fit: contain;
+  margin-top: 15px;
+  transition: transform 0.2s ease;
+}
+
+.rolling {
+  animation: roll 0.12s infinite alternate;
+}
+
+@keyframes roll {
+  from { transform: scale(0.9); }
+  to { transform: scale(1.1); }
+}
+
+#result {
+  font-size: 22px;
+  margin-top: 8px;
+  min-height: 26px;
+}
+
+/* INVENTORY */
+#inventory {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.inv-item {
+  background: #1e1e1e;
+  padding: 6px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+/* SCREEN FLASH */
+#flash {
+  position: fixed;
+  inset: 0;
+  background: white;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.flash {
+  animation: flash 0.3s ease;
+}
+
+@keyframes flash {
+  0% { opacity: 0.8; }
+  100% { opacity: 0; }
+}
+/* ==================== AUTH BOX ==================== */
+#authBox {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  background: #222;           /* Dark background */
+  padding: 16px;              /* Some padding */
+  border-radius: 12px;        /* Rounded corners */
+  width: 240px;               /* Fixed width */
+  z-index: 2000;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5); /* Soft shadow */
+  font-family: Arial, sans-serif;
+}
+
+/* Input fields */
+#authBox input {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 8px;
+  border-radius: 6px;
+  border: none;
+  outline: none;
+  background: #333;
+  color: white;
+  font-size: 14px;
+}
+
+#authBox input::placeholder {
+  color: #aaa;
+}
+
+/* Buttons */
+#authBox button {
+  width: 100%;
+  padding: 10px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+  background: #4caf50;
+  color: white;
+  transition: background 0.2s;
+  font-size: 14px;
+}
+
+#authBox button:hover {
+  background: #45a049;
+}
+
+/* User info (after login) */
+#userInfo {
+  display: none;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+#userInfo #welcome {
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+#userInfo button {
+  background: #f44336;
+  padding: 8px;
+}
+
+#userInfo button:hover {
+  background: #d32f2f;
+}
+#verifyOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+}
+
+.verifyBox {
+  background: #111;
+  padding: 25px;
+  width: 90%;
+  max-width: 320px;
+  border-radius: 12px;
+  text-align: center;
+  color: white;
+}
+
+.verifyBox input {
+  width: 100%;
+  padding: 10px;
+  margin: 12px 0;
+  border-radius: 6px;
+  border: none;
+}
+
+.verifyBox button {
+  width: 100%;
+  padding: 10px;
+  background: #4caf50;
+  border: none;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+}
+.admin-panel {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 220px;
+  background: linear-gradient(145deg, #0f0f14, #1b1b28);
+  border: 1px solid #ff4d4d55;
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 0 25px #ff4d4d33;
+  font-family: system-ui, sans-serif;
+  z-index: 9999;
+  display: none;
+}
+
+.admin-header {
+  font-weight: bold;
+  color: #ff4d4d;
+  text-align: center;
+  margin-bottom: 10px;
+  letter-spacing: 1px;
+}
+
+.admin-panel label {
+  font-size: 12px;
+  color: #aaa;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.admin-panel select {
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  border: none;
+  background: #111;
+  color: white;
+  margin-bottom: 10px;
+}
+
+.admin-panel button {
+  width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, #ff4d4d, #ff1f6a);
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.admin-panel button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 15px #ff4d4d;
+}
+.redeem-box {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  width: 220px;
+  background: linear-gradient(145deg, #101018, #1a1a2a);
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 0 20px #4da6ff33;
+  font-family: system-ui, sans-serif;
+  z-index: 9999;
+}
+
+.redeem-title {
+  font-weight: bold;
+  color: #4da6ff;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.redeem-box input {
+  width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  border: none;
+  background: #0d0d14;
+  color: white;
+  text-align: center;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.redeem-box button {
+  width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, #4da6ff, #6c7bff);
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.redeem-box button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 15px #4da6ff;
+}
+
+#codeStatus {
+  margin-top: 6px;
+  font-size: 12px;
+  text-align: center;
+  color: #aaa;
+}
+/* Toggle button */
+#statsToggle {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 9999;
+  background: #111;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 18px;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+#statsToggle:hover {
+  background: #222;
+}
+
+/* Stats panel */
+#statsPanel {
+  position: fixed;
+  top: 50px;
+  right: 12px;
+  width: 260px;
+  max-height: 70vh;
+  background: rgba(15, 15, 15, 0.95);
+  color: white;
+  border-radius: 12px;
+  padding: 14px;
+  overflow-y: auto;
+
+  /* SLIDE ANIM */
+  transform: translateX(120%);
+  transition: transform 0.35s cubic-bezier(.25,.8,.25,1);
+  z-index: 9998;
+}
+
+/* When open */
+#statsPanel.open {
+  transform: translateX(0);
+}
+
+#statsPanel h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 18px;
+}
+
+/* Scrollbar (optional but sexy) */
+#statsPanel::-webkit-scrollbar {
+  width: 6px;
+}
+#statsPanel::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 10px;
+}
+#adminToggleBtn {
+  position: fixed;
+  top: 12px;
+  right: 75px;
+  z-index: 2000;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: #222;
+  color: white;
+  font-weight: bold;
+}
+
+#adminPanelWrapper {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 320px;
+  height: 100%;
+  background: #151515;
+  padding: 14px;
+  box-shadow: -6px 0 20px rgba(0,0,0,0.4);
+  transform: translateX(100%);
+  transition: transform 0.35s ease;
+  z-index: 1999;
+  overflow-y: auto;
+}
+
+#adminPanelWrapper.open {
+  transform: translateX(0);
+}
+/* ===== GLOBAL ADMIN ===== */
+
+.global-admin {
+  margin-top: 16px;
+  border: 2px solid #ff004c;
+  border-radius: 12px;
+  padding: 12px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 0, 76, 0.08),
+    rgba(0, 0, 0, 0.6)
+  );
+}
+
+.global-header {
+  font-weight: bold;
+  letter-spacing: 1px;
+  color: #ff4d6d;
+  margin-bottom: 12px;
+  text-align: center;
+  text-shadow: 0 0 8px rgba(255, 0, 76, 0.6);
+}
+
+.global-section {
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.global-section label {
+  font-size: 13px;
+  color: #ffb3c1;
+}
+
+.global-section input,
+.global-section select {
+  background: #0d0d0d;
+  border: 1px solid #ff4d6d;
+  border-radius: 6px;
+  padding: 6px;
+  color: white;
+}
+
+.global-section input::placeholder {
+  color: #aaa;
+}
+
+/* Danger button */
+.danger-btn {
+  margin-top: 6px;
+  background: linear-gradient(135deg, #ff004c, #ff6b81);
+  border: none;
+  color: white;
+  font-weight: bold;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.danger-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 12px rgba(255, 0, 76, 0.6);
+}
+
+.danger-btn:active {
+  transform: scale(0.97);
+}
+
+/* Status text */
+.global-status {
+  margin-top: 8px;
+  text-align: center;
+  font-weight: bold;
+  font-size: 14px;
+}
+/* ===== GLOBAL MESSAGE POPUP ===== */
+#globalMessageContainer {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  pointer-events: none;
+}
+
+.global-message {
+  background: linear-gradient(135deg, #ff004c, #ff6b81);
+  color: white;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-weight: bold;
+  font-size: 15px;
+  box-shadow: 0 0 20px rgba(255, 0, 76, 0.6);
+  opacity: 0;
+  transform: translateY(-20px);
+  animation: globalIn 0.4s ease forwards;
+}
+
+@keyframes globalIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.global-message.fade-out {
+  animation: globalOut 0.4s ease forwards;
+}
+
+@keyframes globalOut {
+  to {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+}
+#upgradePanel {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  background: rgba(30, 30, 30, 0.95);
+  color: white;
+  padding: 15px;
+  border-radius: 10px;
+  width: 220px;
+  z-index: 1000;
+  font-family: sans-serif;
+}
+
+#upgradePanel h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+#upgradePanel button {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 8px;
+  background: #4caf50;
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+#upgradePanel button:disabled {
+  background: #777;
+  cursor: not-allowed;
+}
+
+#upgradePanel button:hover:not(:disabled) {
+  background: #45a049;
+}
+
+#upgradeStatus {
+  margin-top: 8px;
+  font-size: 14px;
+  min-height: 18px;
+  text-align: center;
+}
+.rare-reveal {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle, rgba(0,0,0,0.85), black);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.3s ease;
+}
+
+.rare-reveal.hidden {
+  display: none;
+}
+
+#rareText {
+  font-size: 64px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  text-align: center;
+  animation:
+    pulse 0.8s infinite alternate,
+    shake 0.15s infinite;
+}
+
+@keyframes pulse {
+  from { transform: scale(1); }
+  to   { transform: scale(1.08); }
+}
+
+@keyframes shake {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(2px, -2px); }
+  50% { transform: translate(-2px, 2px); }
+  75% { transform: translate(2px, 2px); }
+}
+
+/* Fullscreen black overlay */
+#starOverlay {
+  position: fixed;
+  inset: 0;
+  background: black;
+  display: none;
+  z-index: 9999;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Glowing white star behind */
+#starGlow {
+  width: 120px; /* bigger */
+  height: 120px;
+  background: white;
+  clip-path: polygon(
+    50% 0%, 61% 35%, 98% 35%, 68% 57%, 
+    79% 91%, 50% 70%, 21% 91%, 32% 57%, 
+    2% 35%, 39% 35%
+  );
+  position: absolute;
+  transform: scale(0.2) rotate(0deg);
+  box-shadow: 0 0 20px white, 0 0 40px white, 0 0 60px white;
+  will-change: transform;
+}
+
+/* Black star in front */
+#starReveal {
+  width: 80px; /* smaller than glow */
+  height: 80px;
+  background: black;
+  clip-path: polygon(
+    50% 0%, 61% 35%, 98% 35%, 68% 57%, 
+    79% 91%, 50% 70%, 21% 91%, 32% 57%, 
+    2% 35%, 39% 35%
+  );
+  position: absolute;
+  transform: scale(0.2) rotate(0deg);
+  will-change: transform;
+}
+@keyframes starGrowSpin {
+  0%   { transform: scale(0.2) rotate(0deg); }
+  100% { transform: scale(8) rotate(3240deg); } /* 3 full spins */
+}
+#upgradeWrapper {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  z-index: 1500;
+}
+
+#upgradePanel {
+  width: 260px;
+  background: #111;
+  border: 2px solid #444;
+  border-right: none;
+  padding: 12px;
+  border-radius: 12px 0 0 12px;
+  transform: translateX(0);
+  transition: transform 0.45s cubic-bezier(.22,.61,.36,1);
+}
+
+#upgradeWrapper.closed #upgradePanel {
+  transform: translateX(260px);
+}
+
+.upgrade-toggle {
+  width: 32px;
+  height: 70px;
+  background: #222;
+  border: 2px solid #555;
+  border-right: none;
+  color: white;
+  font-size: 22px;
+  cursor: pointer;
+  border-radius: 12px 0 0 12px;
+}
+
+#upgradeWrapper.closed .upgrade-toggle {
+  border-radius: 0 12px 12px 0;
+}
