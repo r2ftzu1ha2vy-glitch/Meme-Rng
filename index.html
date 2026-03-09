@@ -6,144 +6,171 @@
   <title>MEME RNG</title>
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
-  <div class="game">
-    <h1>MEME RNG</h1>
 
-    <div id="rngButton" class="text-button">🎲 ROLL MEME 🎲</div>
-    <button id="quickRollBtn" disabled>⚡ Quick Roll: OFF</button>
-<div id="statsToggle">📊</div>
+<div class="game">
+  <h1>MEME RNG</h1>
 
-<div id="statsPanel">
-  <h3>📊 Stats</h3>
-  <div id="statsContent"></div>
-</div>
+  <div id="rngButton" class="text-button">🎲 ROLL MEME 🎲</div>
+  <button id="quickRollBtn" disabled>⚡ Quick Roll: OFF</button>
 
-<div id="authBox" style="
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  background: #111;
-  padding: 10px;
-  border-radius: 8px;
-  z-index: 2000;
-  width: 220px;
-">
-  <div id="userInfo" style="display:none;">
-  <div id="welcome" style="margin-bottom:6px;"></div>
-  <button id="logoutBtn">Log out</button>
-  <button id="deleteBtn" style="margin-top:6px; background:#ff4d4d; color:white;">Reset Account</button>
-</div>
+  <div id="statsToggle">📊</div>
 
-  
-<div id="verifyOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:3000; justify-content:center; align-items:center;">
-  <div class="verifyBox" style="background:#222; padding:20px; border-radius:8px; color:white; text-align:center;">
-    <h2>Verify your email</h2>
-    <p>We have sent a link to the email you just gave. Click it to verify your email.</p>
-    <button id="verifyBtn">Continue</button>
+  <div id="statsPanel">
+    <h3>📊 Stats</h3>
+    <div id="statsContent"></div>
   </div>
-</div>
 
-  <div id="authForm">
-    <input id="usernameInput" placeholder="Username" style="width:100%;margin-top:6px;">
-    <input id="emailInput" placeholder="Email" style="width:100%;margin-middle:6px;">
-        <input id="passwordInput" type="password" placeholder="Password" style="width:100%;margin-bottom:6px;">
-    <button id="loginBtn" style="width:100%;">Sign in / Sign up</button>
-  </div>
-</div>
+  <!-- AUTH BOX -->
+  <div id="authBox" style="
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    background: #111;
+    padding: 10px;
+    border-radius: 8px;
+    z-index: 2000;
+    width: 220px;
+  ">
 
-    <div class="cooldown-bar">
-      <div id="cooldownFill"></div>
+    <div id="userInfo" style="display:none;">
+      <div id="welcome" style="margin-bottom:6px;"></div>
+      <button id="logoutBtn">Log out</button>
+      <button id="deleteBtn" style="margin-top:6px;background:#ff4d4d;color:white;">
+        Reset Account
+      </button>
     </div>
 
-    <div id="rollBox">
-      <img id="memeImg" src="" alt="Meme" />
-      <div id="result">Click to roll</div>
+    <div id="authForm">
+      <input id="usernameInput" placeholder="Username" style="width:100%;margin-top:6px;">
+      <input id="emailInput" placeholder="Email" style="width:100%;margin-top:6px;">
+      <input id="passwordInput" type="password" placeholder="Password" style="width:100%;margin-bottom:6px;">
+      <button id="loginBtn" style="width:100%;">Sign in / Sign up</button>
     </div>
 
-    <h2>Inventory</h2>
-    <div id="inventory"></div>
   </div>
 
-  <div id="flash"></div>
-  
-  <!-- Admin toggle button -->
+  <div class="cooldown-bar">
+    <div id="cooldownFill"></div>
+  </div>
+
+  <div id="rollBox">
+    <img id="memeImg" src="" alt="Meme">
+    <div id="result">Click to roll</div>
+  </div>
+
+  <h2>Inventory</h2>
+  <div id="inventory"></div>
+
+</div>
+
+<div id="flash"></div>
+
+<!-- ADMIN BUTTON -->
 <button id="adminToggleBtn" style="display:none">⚙️ Admin</button>
 
-<!-- Wrap BOTH admin panels -->
+<!-- ADMIN WRAPPER -->
 <div id="adminPanelWrapper">
 
-<!-- ADMIN PANEL -->
-<div id="adminPanel" class="admin-panel">
-  <div class="admin-header">
-    <span>👑 ADMIN PANEL</span>
+  <!-- ADMIN PANEL -->
+  <div id="adminPanel" class="admin-panel">
+
+    <div class="admin-header">
+      <span>👑 ADMIN PANEL</span>
+    </div>
+
+    <label>Spawn Meme</label>
+    <select id="adminMemeSelect"></select>
+
+    <button id="spawnMemeBtn">Spawn Meme</button>
+
   </div>
 
-  <label>Spawn Meme</label>
-  <select id="adminMemeSelect"></select>
+  <!-- GLOBAL ADMIN -->
+  <div id="globalAdminPanel" class="global-admin">
 
-  <button id="spawnMemeBtn">Spawn Meme</button>
-</div>
-  
-<div id="globalAdminPanel" class="global-admin">
-  <div class="global-header">
-    🌐 GLOBAL ADMIN
+    <div class="global-header">
+      🌐 GLOBAL ADMIN
+    </div>
+
+    <div class="global-section">
+      <label>Broadcast Message</label>
+      <input type="text" id="globalMessageInput" placeholder="Message to all users">
+      <button id="sendGlobalMessageBtn" class="danger-btn">
+        Send Message
+      </button>
+    </div>
+
+    <div class="global-section">
+      <label>Give Meme to Everyone</label>
+      <select id="globalMemeSelect"></select>
+      <button id="giveGlobalMemeBtn" class="danger-btn">
+        Give Globally
+      </button>
+    </div>
+
+    <div id="globalAdminStatus" class="global-status"></div>
+
   </div>
-
-  <div class="global-section">
-    <label>Broadcast Message</label>
-    <input type="text" id="globalMessageInput" placeholder="Message to all users">
-    <button id="sendGlobalMessageBtn" class="danger-btn">Send Message</button>
-  </div>
-
-  <div class="global-section">
-    <label>Give Meme to Everyone</label>
-    <select id="globalMemeSelect"></select>
-    <button id="giveGlobalMemeBtn" class="danger-btn">
-      Give Globally
-    </button>
-  </div>
-
-  <div id="globalAdminStatus" class="global-status"></div>
-</div>
 
 </div>
 
 <!-- REDEEM BOX -->
 <div id="redeemBox" class="redeem-box">
+
   <div class="redeem-title">🎟️ Redeem Code</div>
 
   <input id="codeInput" placeholder="ENTER CODE">
   <button id="redeemBtn">Redeem</button>
 
   <div id="codeStatus"></div>
+
 </div>
-  
+
+<!-- UPGRADES -->
 <div id="upgradeWrapper">
-  <button id="upgradeToggle" class="upgrade-toggle">&lt;</button>
+
+  <button id="upgradeToggle" class="upgrade-toggle">
+    &lt;
+  </button>
 
   <div id="upgradePanel">
+
     <h3>Upgrades</h3>
 
-    <button id="upgradeLuckBtn">Upgrade Luck (Sheesh x2)</button>
-    <button id="unlockQuickRollBtn">Unlock Quick Roll (Gigachad x1)</button>
-    <button id="upgradeInventoryBtn">Inventory +5 (Pepe x3)</button>
+    <button id="upgradeLuckBtn">
+      Upgrade Luck (Sheesh x2)
+    </button>
+
+    <button id="unlockQuickRollBtn">
+      Unlock Quick Roll (Gigachad x1)
+    </button>
+
+    <button id="upgradeInventoryBtn">
+      Inventory +5 (Pepe x3)
+    </button>
 
     <div id="upgradeStatus"></div>
+
   </div>
+
 </div>
 
-  <div id="rareReveal" class="rare-reveal hidden">
+<!-- RARE REVEAL -->
+<div id="rareReveal" class="rare-reveal hidden">
   <div id="rareText"></div>
 </div>
-<!-- Fullscreen overlay -->
+
+<!-- STAR OVERLAY -->
 <div id="starOverlay">
-  <div id="starGlow"></div> <!-- white glowing star behind -->
-  <div id="starReveal"></div> <!-- black center star in front -->
+  <div id="starGlow"></div>
+  <div id="starReveal"></div>
 </div>
 
 <div id="globalMessageContainer"></div>
 
-  <script src="script.js"></script>
+<script src="script.js" defer></script>
+
 </body>
 </html>
