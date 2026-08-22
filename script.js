@@ -1,9 +1,40 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+  signOut,
+  updateProfile
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
+import {
+  getDatabase,
+  ref,
+  set,
+  get,
+  push,
+  query,
+  orderByChild,
+  startAt,
+  onChildAdded
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-const supabase = createClient(
-  "https://ndqiwftuzyoseibkwdnk.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kcWl3ZnR1enlvc2VpYmt3ZG5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2NTM0NDAsImV4cCI6MjA4NjIyOTQ0MH0.RwAs1c9hduHa1rbK22K5o6YljabFwyTzOBkdiBjYIwo"
-);
+// ========== FIREBASE CONFIG ==========
+// 🔧 Replace these with the values from your Firebase project settings
+// (Project settings -> General -> Your apps -> SDK setup and configuration).
+// Since this uses the Realtime Database (not Firestore), make sure
+// "databaseURL" is filled in — you'll find it on the Realtime Database page.
+const firebaseConfig = {
+  apiKey: "AIzaSyB4dgpFEh29DVgfcSd_nEtEmPz8GQPlE0c",
+  authDomain: "meme-rng.firebaseapp.com",
+  databaseURL: "https://meme-rng-default-rtdb.firebaseio.com",
+  projectId: "meme-rng",
+  appId: "1:643327088409:web:b624be7e4c674ca711d788"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
 
 const memes = [
   { name: "Bruh", chance: 50, img: "https://iili.io/fpYGZZB.jpg", color: "#aaa", rarity: "Common", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/fredchaferfrommedia-bruh-1-120133.mp3" },
@@ -26,24 +57,20 @@ const memes = [
 ];
 
 const ADMIN_EMAILS = [
-  "yeo_wayne@students.edu.sg",
+  "r2ftzu1ha2vy@gmail.com",
   "muhamad_afif_rayyan_danial@students.edu.sg",
 ];
 
+const DEFAULT_UPGRADES = { luck: 0, quickRollUnlocked: false, inventoryLimit: 50 };
+const DEFAULT_STATS = { totalRolls: 0, memes: {}, rarities: {} };
+
 // Upgrade-related stats
-let upgrades = {
-  luck: 0,                 // affects rare meme chances
-  quickRollUnlocked: false, // allows Quick Roll toggle
-  inventoryLimit: 50       // starting inventory limit
-};
+let upgrades = { ...DEFAULT_UPGRADES };
 
 let isAdmin = false;
 let quickRoll = false;
-let stats = {
-  totalRolls: 0,
-  memes: {},      // { "Bruh": 12 }
-  rarities: {}    // { "Common": 20 }
-};
+let stats = { ...DEFAULT_STATS };
+let usedCodes = {};
 
 const REDEEM_CODES = {
   "RELEASE": { meme: "Gigachad", amount: 1 },
@@ -74,7 +101,10 @@ const deleteBtn = document.getElementById("deleteBtn");
 const usernameInput = document.getElementById("usernameInput");
 const emailInput = document.getElementById("emailInput");
 const passwordInput = document.getElementById("passwordInput");
-let currentUserId = null; // new variable to track user ID
+
+let currentUserId = null;
+let currentUser = null;
+let currentEmail = null;
 
 const rollLoopSound = new Audio("https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/matthewvakaliuk73627-mouse-click-290204-%5BAudioTrimmer.com%5D.mp3");
 rollLoopSound.loop = true;
@@ -94,22 +124,40 @@ let inventory = {};
 let placedMemes = [];
 let selectedMeme = null;
 let previewImg = null;
-let currentUser = null;
-let currentEmail = null;
+
+// Cursors so we only ever apply each broadcast message/meme once (fixes the
+// old "re-shows every 5s forever" and "duplicates meme every 5s" bugs).
+let lastSeenMessageTs = 0;
+let lastSeenMemeTs = 0;
 
 let dragging = null;
 let offset = { x: 0, y: 0 };
 
-supabase.auth.onAuthStateChange((event, session) => {
-  if (!session?.user) return;
+// Live listeners for global broadcasts, torn down on logout so a signed-out
+// user never keeps receiving another account's realtime updates.
+let unsubscribeMessages = null;
+let unsubscribeMemes = null;
 
-  currentEmail = session.user.email;
+// ========== AUTH STATE ==========
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    handleSignedOut();
+    return;
+  }
+
+  currentEmail = user.email;
+  currentUserId = user.uid;
   isAdmin = ADMIN_EMAILS.includes(currentEmail);
 
+  let data = null;
+  try {
+    const snap = await get(ref(db, "users/" + currentUserId));
+    data = snap.exists() ? snap.val() : null;
+  } catch (err) {
+    console.error("Failed to load user data:", err);
+  }
 
-  const data = JSON.parse(localStorage.getItem("memeUser_" + currentEmail)) || {};
-  currentUser = data.username || "User";
-  currentUserId = data.userId || crypto.randomUUID();
+  currentUser = data?.username || user.displayName || "User";
 
   authForm.style.display = "none";
   userInfo.style.display = "block";
@@ -118,13 +166,14 @@ supabase.auth.onAuthStateChange((event, session) => {
     ? `👑 ADMIN ${currentUser}`
     : `👋 ${currentUser} [${currentUserId}]`;
 
-if (isAdmin) {
-  enableAdminPanel();
-  enableGlobalAdminPanel();
-  adminToggleBtn.style.display = "block";
-}
+  if (isAdmin) {
+    enableAdminPanel();
+    enableGlobalAdminPanel();
+    adminToggleBtn.style.display = "block";
+  }
 
-  loadUserData();
+  loadUserData(data);
+  listenForGlobalUpdates();
 });
 
 function restorePlacedMemes() {
@@ -165,19 +214,30 @@ function restorePlacedMemes() {
   });
 }
 
-function saveUserData() {
-  if (!currentEmail) return;
-
-  const data = {
-    userId: currentUserId,
+function buildUserRecord() {
+  return {
     username: currentUser,
     inventory,
     placedMemes,
     stats,
-    upgrades // <--- save upgrades too
+    upgrades,
+    usedCodes,
+    lastSeenMessageTs,
+    lastSeenMemeTs
   };
+}
 
-  localStorage.setItem("memeUser_" + currentEmail, JSON.stringify(data));
+let saveTimeout = null;
+function saveUserData() {
+  if (!currentUserId) return;
+
+  // Debounce so rapid actions (dragging, deleting, redeeming) don't fire a
+  // write per event — the last write within 300ms wins.
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    set(ref(db, "users/" + currentUserId), buildUserRecord())
+      .catch(err => console.error("Failed to save user data:", err));
+  }, 300);
 }
 
 function rollingAnimation(finalMeme) {
@@ -212,7 +272,14 @@ function rollingAnimation(finalMeme) {
 
 // ========== RNG ==========
 function rollRNG() {
-  const totalChance = memes.reduce((sum, m) => sum + m.chance, 0);
+  const totalChance = memes.reduce((sum, m) => {
+    let chance = m.chance;
+    if (["Epic", "Legendary", "Secret"].includes(m.rarity)) {
+      chance *= 1 + upgrades.luck * 0.1;
+    }
+    return sum + chance;
+  }, 0);
+
   let r = Math.random() * totalChance;
   let sum = 0;
 
@@ -227,6 +294,8 @@ function rollRNG() {
     sum += chance;
     if (r <= sum) return m;
   }
+
+  return memes[memes.length - 1];
 }
 
 function playSound(audio) {
@@ -285,21 +354,16 @@ function updateInventory() {
     del.style.fontWeight = "bold";
     del.style.cursor = "pointer";
 
+    // Single click handler (works for touch too, via the browser's
+    // synthesized click) — fixes the old bug where touchstart AND click
+    // both fired and decremented inventory twice per tap on mobile.
     del.addEventListener("click", e => {
       e.stopPropagation();
       inventory[name]--;
       if (inventory[name] <= 0) delete inventory[name];
       updateInventory();
-    });
-
-    del.addEventListener("touchstart", e => {
-      e.preventDefault();
-      e.stopPropagation();
-      inventory[name]--;
-      if (inventory[name] <= 0) delete inventory[name];
-      updateInventory();
-      updateUpgradeButtons?.(); // if exists
-      refreshUpgradesUI();
+      updateUpgradeButtons?.();
+      refreshUpgradesUI?.();
     });
 
     row.append(label, del);
@@ -318,6 +382,10 @@ function screenFlash() {
 
 button.addEventListener("click", () => {
   if (locked) return;
+  if (!currentUserId) {
+    alert("Please sign in first!");
+    return;
+  }
 
   startCooldown();
 
@@ -343,7 +411,7 @@ function finishRoll(final) {
   playSound(rollEndSound);
 
   // Calculate inventory including this new meme
-  const totalItems = getTotalInventoryCount() + 1; 
+  const totalItems = getTotalInventoryCount() + 1;
 
   if (totalItems > upgrades.inventoryLimit) {
     showFloatingText("📦 Inventory full — meme discarded!", "#ff757c");
@@ -449,8 +517,7 @@ function placeMeme(e) {
 
   placedMemes.push(data);
   const { wrap } = createPlacedImg(data);
-document.body.appendChild(wrap);
-
+  document.body.appendChild(wrap);
 
   // Decrement inventory for both normal users AND admins
   if (inventory[memeObj.name]) {
@@ -541,31 +608,37 @@ function makeDraggable(el) {
   document.addEventListener("mouseup", end);
   document.addEventListener("touchend", end);
 }
-function loadUserData() {
-  if (!currentEmail) return;
 
-  const data = JSON.parse(localStorage.getItem("memeUser_" + currentEmail));
-  if (!data) return;
+function loadUserData(data) {
+  if (!data) {
+    inventory = {};
+    placedMemes = [];
+    stats = { ...DEFAULT_STATS, memes: {}, rarities: {} };
+    upgrades = { ...DEFAULT_UPGRADES };
+    usedCodes = {};
+    // Brand-new account: don't retroactively apply old broadcasts.
+    lastSeenMessageTs = Date.now();
+    lastSeenMemeTs = Date.now();
+  } else {
+    inventory = data.inventory || {};
+    placedMemes = data.placedMemes || [];
+    stats = data.stats || { ...DEFAULT_STATS };
+    upgrades = data.upgrades || { ...DEFAULT_UPGRADES };
+    usedCodes = data.usedCodes || {};
+    lastSeenMessageTs = data.lastSeenMessageTs || Date.now();
+    lastSeenMemeTs = data.lastSeenMemeTs || Date.now();
+  }
 
-  currentUserId = data.userId || crypto.randomUUID();
-  currentUser = data.username || "User";
-
-  inventory = data.inventory || {};
-  placedMemes = data.placedMemes || [];
-  stats = data.stats || { totalRolls: 0, memes: {}, rarities: {} };
-
-  upgrades = data.upgrades || {
-    luck: 0,
-    quickRollUnlocked: false,
-    inventoryLimit: 50
-  };
+  quickRollBtn.disabled = !upgrades.quickRollUnlocked;
 
   updateInventory();
   restorePlacedMemes();
   updateStatsUI();
   refreshUpgradesUI();
+  updateUpgradeButtons();
 }
 
+// ========== LOGIN / SIGN UP ==========
 loginBtn.onclick = async () => {
   const email = emailInput.value.trim().toLowerCase();
   const password = passwordInput.value;
@@ -576,83 +649,111 @@ loginBtn.onclick = async () => {
     return;
   }
 
-  // TRY SIGN IN
-  const { error: signInError } = await supabase.auth.signInWithPassword({
-    email,
-    password
-  });
+  try {
+    // TRY SIGN IN first
+    await signInWithEmailAndPassword(auth, email, password);
+    // onAuthStateChanged handles the rest — no page reload needed.
+  } catch (signInErr) {
+    const noAccount = [
+      "auth/user-not-found",
+      "auth/invalid-credential",
+      "auth/invalid-login-credentials"
+    ].includes(signInErr.code);
 
-  if (!signInError) {
-    alert("Login successful! Reloading…");
-    location.reload();
-    return;
-  }
-
-  // SIGN UP
-  const { error: signUpError } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: { username }
+    if (!noAccount) {
+      alert(signInErr.message);
+      return;
     }
-  });
 
-  if (signUpError) {
-    alert(signUpError.message);
-    return;
-  }
-
-  currentUserId = crypto.randomUUID();
-  currentUser = username;
-
-localStorage.setItem(
-  "memeUser_" + email,
-  JSON.stringify({
-    userId: currentUserId,
-    username: currentUser,
-    inventory: {},
-    placedMemes: [],
-    stats: {
-      totalRolls: 0,
-      memes: {},
-      rarities: {}
+    // SIGN UP
+    if (!username) {
+      alert("Enter a username to create a new account");
+      return;
     }
-  })
-);
+
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(cred.user, { displayName: username });
+
+      const initialData = {
+        username,
+        inventory: {},
+        placedMemes: [],
+        stats: { ...DEFAULT_STATS },
+        upgrades: { ...DEFAULT_UPGRADES },
+        usedCodes: {},
+        lastSeenMessageTs: Date.now(),
+        lastSeenMemeTs: Date.now()
+      };
+
+      await set(ref(db, "users/" + cred.user.uid), initialData);
+      // onAuthStateChanged fires automatically after sign-up.
+    } catch (signUpErr) {
+      alert(signUpErr.message);
+    }
+  }
 };
 
 // ========== LOGOUT ==========
 logoutBtn.onclick = async () => {
-  await supabase.auth.signOut();
-  resetLocalData();
-};
-
-// ========== DELETE ACCOUNT (local reset) ==========
-deleteBtn.onclick = () => {
-  const confirmDelete = confirm("Are you sure you want to reset your account? This will clear all your local progress.");
-  if (!confirmDelete) return;
-
-  resetLocalData();
-  alert("Your local account has been reset. You can now create a new one.");
-};
-
-// ========== RESET FUNCTION ==========
-function resetLocalData() {
-  if (currentEmail) {
-    localStorage.removeItem("memeUser_" + currentEmail);
+  try {
+    await signOut(auth);
+  } catch (err) {
+    console.error(err);
   }
+};
+
+// ========== RESET ACCOUNT (clears cloud progress) ==========
+deleteBtn.onclick = async () => {
+  const confirmDelete = confirm("Are you sure you want to reset your account? This will clear all your progress.");
+  if (!confirmDelete) return;
+  if (!currentUserId) return;
+
+  const fresh = {
+    username: currentUser,
+    inventory: {},
+    placedMemes: [],
+    stats: { ...DEFAULT_STATS },
+    upgrades: { ...DEFAULT_UPGRADES },
+    usedCodes: {},
+    lastSeenMessageTs: Date.now(),
+    lastSeenMemeTs: Date.now()
+  };
+
+  try {
+    await set(ref(db, "users/" + currentUserId), fresh);
+    loadUserData(fresh);
+    alert("Your account has been reset.");
+  } catch (err) {
+    console.error(err);
+    alert("Failed to reset account.");
+  }
+};
+
+// ========== UI RESET ON SIGN-OUT ==========
+function handleSignedOut() {
+  if (unsubscribeMessages) { unsubscribeMessages(); unsubscribeMessages = null; }
+  if (unsubscribeMemes) { unsubscribeMemes(); unsubscribeMemes = null; }
 
   inventory = {};
   placedMemes = [];
   selectedMeme = null;
   currentUser = null;
   currentEmail = null;
+  currentUserId = null;
+  isAdmin = false;
+  stats = { ...DEFAULT_STATS };
+  upgrades = { ...DEFAULT_UPGRADES };
+  usedCodes = {};
 
   document.querySelectorAll("[data-id]").forEach(e => e.remove());
-  updateInventory();
+  inventoryEl.innerHTML = "";
+  updateStatsUI();
 
   authForm.style.display = "block";
   userInfo.style.display = "none";
+  adminToggleBtn.style.display = "none";
+  adminPanelWrapper.classList.remove("open");
 }
 
 function enableAdminPanel() {
@@ -677,23 +778,25 @@ function enableAdminPanel() {
 
     inventory[meme.name] = (inventory[meme.name] || 0) + 1;
     updateInventory();
-   showFloatingText(`Spawned ${meme.name}!`, meme.color);
-
+    showFloatingText(`Spawned ${meme.name}!`, meme.color);
   };
 }
-const usedCodesKey = () => "usedCodes_" + currentEmail;
 
 document.getElementById("redeemBtn").onclick = () => {
   const code = document.getElementById("codeInput").value.trim().toUpperCase();
   const status = document.getElementById("codeStatus");
+
+  if (!currentUserId) {
+    status.textContent = "❌ Please sign in first";
+    return;
+  }
 
   if (!REDEEM_CODES[code]) {
     status.textContent = "❌ Invalid code";
     return;
   }
 
-  const used = JSON.parse(localStorage.getItem(usedCodesKey())) || [];
-  if (used.includes(code)) {
+  if (usedCodes[code]) {
     status.textContent = "⚠️ Code already used";
     return;
   }
@@ -701,12 +804,12 @@ document.getElementById("redeemBtn").onclick = () => {
   const reward = REDEEM_CODES[code];
   inventory[reward.meme] = (inventory[reward.meme] || 0) + reward.amount;
 
-  used.push(code);
-  localStorage.setItem(usedCodesKey(), JSON.stringify(used));
+  usedCodes[code] = true;
 
   updateInventory();
   status.textContent = `✅ Received ${reward.meme}!`;
 };
+
 function showFloatingText(message, color = "#fff") {
   const text = document.createElement("div");
   text.textContent = message;
@@ -739,9 +842,11 @@ function showFloatingText(message, color = "#fff") {
     text.addEventListener("transitionend", () => text.remove());
   }, 1000);
 }
+
 const quickRollBtn = document.getElementById("quickRollBtn");
 
 quickRollBtn.onclick = () => {
+  if (quickRollBtn.disabled) return;
   quickRoll = !quickRoll;
   quickRollBtn.textContent = quickRoll
     ? "⚡ Quick Roll: ON"
@@ -774,6 +879,7 @@ function updateStatsUI() {
 
   statsContent.innerHTML = html;
 }
+
 function enableGlobalAdminPanel() {
   const panel = document.getElementById("globalAdminPanel");
   const messageInput = document.getElementById("globalMessageInput");
@@ -798,7 +904,11 @@ function enableGlobalAdminPanel() {
     const message = messageInput.value.trim();
     if (!message) return;
     try {
-      await supabase.from("globalMessages").insert({ message, sender: currentEmail });
+      await push(ref(db, "globalMessages"), {
+        message,
+        sender: currentEmail,
+        timestamp: Date.now()
+      });
       status.textContent = "✅ Message sent globally!";
       messageInput.value = "";
     } catch (err) {
@@ -814,7 +924,12 @@ function enableGlobalAdminPanel() {
     if (!meme) return;
 
     try {
-      await supabase.from("globalMemes").insert({ memeName, sender: currentEmail, amount: 1 });
+      await push(ref(db, "globalMemes"), {
+        memeName,
+        sender: currentEmail,
+        amount: 1,
+        timestamp: Date.now()
+      });
       status.textContent = `✅ ${memeName} given to all users!`;
     } catch (err) {
       console.error(err);
@@ -822,6 +937,7 @@ function enableGlobalAdminPanel() {
     }
   };
 }
+
 function showGlobalMessage(text) {
   let container = document.getElementById("globalMessageContainer");
 
@@ -844,26 +960,51 @@ function showGlobalMessage(text) {
   }, 5000);
 }
 
-async function checkGlobalUpdates() {
-  // Fetch messages
-  const { data: messages } = await supabase.from("globalMessages").select("*").order("created_at", { ascending: true });
-  messages.forEach(msg => {
-  showGlobalMessage(msg.message);
-});
+// ========== REALTIME GLOBAL BROADCASTS ==========
+// Replaces the old 5-second polling loop. Each listener only fires for
+// entries newer than the last one this account has already processed
+// (lastSeenMessageTs / lastSeenMemeTs), so messages are shown exactly once
+// and global memes are credited exactly once — fixing the old bug where
+// every 5-second poll re-showed every message and re-added every meme.
+function listenForGlobalUpdates() {
+  if (unsubscribeMessages) unsubscribeMessages();
+  if (unsubscribeMemes) unsubscribeMemes();
 
-  // Fetch memes
-  const { data: globalMemes } = await supabase.from("globalMemes").select("*").order("created_at", { ascending: true });
-  globalMemes.forEach(gm => {
-    inventory[gm.memeName] = (inventory[gm.memeName] || 0) + gm.amount;
+  const messagesQuery = query(
+    ref(db, "globalMessages"),
+    orderByChild("timestamp"),
+    startAt(lastSeenMessageTs + 1)
+  );
+
+  unsubscribeMessages = onChildAdded(messagesQuery, snap => {
+    const msg = snap.val();
+    if (!msg) return;
+    showGlobalMessage(msg.message);
+    if (msg.timestamp > lastSeenMessageTs) {
+      lastSeenMessageTs = msg.timestamp;
+      saveUserData();
+    }
   });
 
-  updateInventory();
-  console.log("🌐 Global messages:", messages);
+  const memesQuery = query(
+    ref(db, "globalMemes"),
+    orderByChild("timestamp"),
+    startAt(lastSeenMemeTs + 1)
+  );
+
+  unsubscribeMemes = onChildAdded(memesQuery, snap => {
+    const gm = snap.val();
+    if (!gm) return;
+    inventory[gm.memeName] = (inventory[gm.memeName] || 0) + gm.amount;
+    updateInventory();
+    showFloatingText(`🌐 Received ${gm.memeName}!`, "#4dff88");
+    if (gm.timestamp > lastSeenMemeTs) {
+      lastSeenMemeTs = gm.timestamp;
+      saveUserData();
+    }
+  });
 }
 
-// Run periodically or on login
-setInterval(checkGlobalUpdates, 5000);
-checkGlobalUpdates();
 const upgradeStatus = document.getElementById("upgradeStatus");
 const upgradeLuckBtn = document.getElementById("upgradeLuckBtn");
 const unlockQuickRollBtn = document.getElementById("unlockQuickRollBtn");
@@ -944,8 +1085,9 @@ upgradeInventoryBtn.onclick = () => {
   refreshUpgradesUI();
 };
 
-// Ensure quickRollBtn is enabled/disabled based on saved upgrades
-quickRollBtn.disabled = !upgrades.quickRollUnlocked;
+// Quick Roll starts disabled until upgrades load in loadUserData()
+quickRollBtn.disabled = true;
+
 function updateUpgradeButtons() {
   // Luck requires 2 Epic+
   const epicPlusCount = memes
@@ -960,8 +1102,6 @@ function updateUpgradeButtons() {
   upgradeInventoryBtn.disabled = (inventory["Pepe"] || 0) < 3;
 }
 
-// Call this whenever inventory changes or on load
-updateUpgradeButtons();
 function refreshUpgradesUI() {
   // QUICK ROLL
   unlockQuickRollBtn.style.display =
@@ -1047,6 +1187,7 @@ document.addEventListener("keydown", e => {
 
   playStarReveal(meme);
 });
+
 const upgradeWrapper = document.getElementById("upgradeWrapper");
 const upgradeToggle = document.getElementById("upgradeToggle");
 
