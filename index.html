@@ -9,46 +9,76 @@
 
 <body>
 
+<!-- ICON SPRITE (stroke icons, 24x24) -->
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="iconGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="24" y2="24">
+      <stop offset="0" stop-color="#4da6ff"/>
+      <stop offset="1" stop-color="#b84dff"/>
+    </linearGradient>
+    <symbol id="i-dice" viewBox="0 0 24 24">
+      <rect x="3" y="3" width="18" height="18" rx="4"/>
+      <circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/>
+      <circle cx="12" cy="12" r="1"/>
+      <circle cx="8.5" cy="15.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/>
+    </symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20v-8M12 20V4M19 20v-5"/></symbol>
+    <symbol id="i-crown" viewBox="0 0 24 24"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5L3 8z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3.2 3 3.2 15 0 18-3.2-3-3.2-15 0-18z"/>
+    </symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/>
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>
+    </symbol>
+    <symbol id="i-ticket" viewBox="0 0 24 24">
+      <path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V8z"/>
+      <path d="M14 6v2M14 11v2M14 16v2"/>
+    </symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/></symbol>
+    <symbol id="i-clover" viewBox="0 0 24 24">
+      <circle cx="9" cy="9" r="3.5"/><circle cx="15" cy="9" r="3.5"/>
+      <circle cx="9" cy="15" r="3.5"/><circle cx="15" cy="15" r="3.5"/><path d="M13 17c0 2 1 3.5 3 5"/>
+    </symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v5M12 18v.01"/></symbol>
+  </defs>
+</svg>
+
 <div class="game">
   <h1>MEME RNG</h1>
 
-  <div id="rngButton" class="text-button">🎲 ROLL MEME 🎲</div>
-  <button id="quickRollBtn" disabled>⚡ Quick Roll: OFF</button>
+  <div id="rngButton" class="text-button" role="button" tabindex="0">
+    <svg class="ico"><use href="#i-dice"/></svg> ROLL MEME <svg class="ico"><use href="#i-dice"/></svg>
+  </div>
+  <button id="quickRollBtn" disabled><svg class="ico"><use href="#i-bolt"/></svg> Quick Roll: OFF</button>
 
-  <div id="statsToggle">📊</div>
+  <div id="statsToggle" role="button" tabindex="0" title="Stats" aria-label="Toggle stats">
+    <svg class="ico"><use href="#i-chart"/></svg>
+  </div>
 
   <div id="statsPanel">
-    <h3>📊 Stats</h3>
+    <h3><svg class="ico"><use href="#i-chart"/></svg> Stats</h3>
     <div id="statsContent"></div>
   </div>
 
   <!-- AUTH BOX -->
-  <div id="authBox" style="
-    position: fixed;
-    top: 10px;
-    left: 10px;
-    background: #111;
-    padding: 10px;
-    border-radius: 8px;
-    z-index: 2000;
-    width: 220px;
-  ">
-
-    <div id="userInfo" style="display:none;">
-      <div id="welcome" style="margin-bottom:6px;"></div>
+  <div id="authBox">
+    <div id="userInfo" hidden>
+      <div id="welcome"></div>
       <button id="logoutBtn">Log out</button>
-      <button id="deleteBtn" style="margin-top:6px;background:#ff4d4d;color:white;">
-        Reset Account
-      </button>
+      <button id="deleteBtn">Reset Account</button>
     </div>
 
     <div id="authForm">
-      <input id="usernameInput" placeholder="Username" style="width:100%;margin-top:6px;">
-      <input id="emailInput" placeholder="Email" style="width:100%;margin-top:6px;">
-      <input id="passwordInput" type="password" placeholder="Password" style="width:100%;margin-bottom:6px;">
-      <button id="loginBtn" style="width:100%;">Sign in / Sign up</button>
+      <input id="usernameInput" placeholder="Username" autocomplete="username">
+      <input id="emailInput" type="email" placeholder="Email" autocomplete="email">
+      <input id="passwordInput" type="password" placeholder="Password" autocomplete="current-password">
+      <button id="loginBtn">Sign in / Sign up</button>
     </div>
-
   </div>
 
   <div class="cooldown-bar">
@@ -56,110 +86,74 @@
   </div>
 
   <div id="rollBox">
+    <div id="rarityLabel"></div>
     <img id="memeImg" src="" alt="Meme">
     <div id="result">Click to roll</div>
   </div>
 
   <h2>Inventory</h2>
   <div id="inventory"></div>
-
 </div>
 
 <div id="flash"></div>
 
 <!-- ADMIN BUTTON -->
-<button id="adminToggleBtn" style="display:none">⚙️ Admin</button>
+<button id="adminToggleBtn" hidden><svg class="ico"><use href="#i-gear"/></svg> Admin</button>
 
 <!-- ADMIN WRAPPER -->
 <div id="adminPanelWrapper">
 
-  <!-- ADMIN PANEL -->
   <div id="adminPanel" class="admin-panel">
-
     <div class="admin-header">
-      <span>👑 ADMIN PANEL</span>
+      <span><svg class="ico"><use href="#i-crown"/></svg> ADMIN PANEL</span>
     </div>
 
-    <label>Spawn Meme</label>
+    <label for="adminMemeSelect">Spawn Meme</label>
     <select id="adminMemeSelect"></select>
-
     <button id="spawnMemeBtn">Spawn Meme</button>
-
   </div>
 
-  <!-- GLOBAL ADMIN -->
   <div id="globalAdminPanel" class="global-admin">
-
     <div class="global-header">
-      🌐 GLOBAL ADMIN
+      <svg class="ico"><use href="#i-globe"/></svg> GLOBAL ADMIN
     </div>
 
     <div class="global-section">
-      <label>Broadcast Message</label>
+      <label for="globalMessageInput">Broadcast Message</label>
       <input type="text" id="globalMessageInput" placeholder="Message to all users">
-      <button id="sendGlobalMessageBtn" class="danger-btn">
-        Send Message
-      </button>
+      <button id="sendGlobalMessageBtn" class="danger-btn">Send Message</button>
     </div>
 
     <div class="global-section">
-      <label>Give Meme to Everyone</label>
+      <label for="globalMemeSelect">Give Meme to Everyone</label>
       <select id="globalMemeSelect"></select>
-      <button id="giveGlobalMemeBtn" class="danger-btn">
-        Give Globally
-      </button>
+      <button id="giveGlobalMemeBtn" class="danger-btn">Give Globally</button>
     </div>
 
     <div id="globalAdminStatus" class="global-status"></div>
-
   </div>
 
 </div>
 
 <!-- REDEEM BOX -->
 <div id="redeemBox" class="redeem-box">
-
-  <div class="redeem-title">🎟️ Redeem Code</div>
-
-  <input id="codeInput" placeholder="ENTER CODE">
+  <div class="redeem-title"><svg class="ico"><use href="#i-ticket"/></svg> Redeem Code</div>
+  <input id="codeInput" placeholder="ENTER CODE" autocomplete="off">
   <button id="redeemBtn">Redeem</button>
-
   <div id="codeStatus"></div>
-
 </div>
 
 <!-- UPGRADES -->
 <div id="upgradeWrapper">
-
-  <button id="upgradeToggle" class="upgrade-toggle">
-    &lt;
-  </button>
+  <button id="upgradeToggle" class="upgrade-toggle" aria-label="Toggle upgrades">&lt;</button>
 
   <div id="upgradePanel">
-
     <h3>Upgrades</h3>
-
-    <button id="upgradeLuckBtn">
-      Upgrade Luck (Sheesh x2)
-    </button>
-
-    <button id="unlockQuickRollBtn">
-      Unlock Quick Roll (Gigachad x1)
-    </button>
-
-    <button id="upgradeInventoryBtn">
-      Inventory +5 (Pepe x3)
-    </button>
-
+    <button id="upgradeLuckBtn">Upgrade Luck (2 Epic+ memes)</button>
+    <button id="unlockQuickRollBtn">Unlock Quick Roll (Gigachad x1)</button>
+    <button id="upgradeInventoryBtn">Inventory +5 (Pepe x3)</button>
     <div id="upgradeStatus"></div>
-
   </div>
-
-</div>
-
-<!-- RARE REVEAL -->
-<div id="rareReveal" class="rare-reveal hidden">
-  <div id="rareText"></div>
 </div>
 
 <!-- STAR OVERLAY -->
@@ -171,7 +165,5 @@
 <div id="globalMessageContainer"></div>
 
 <script type="module" src="script.js"></script>
-
 </body>
 </html>
-
