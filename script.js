@@ -1,29 +1,24 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
-  getAuth,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  onAuthStateChanged,
-  signOut,
-  updateProfile
+  getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  onAuthStateChanged, signOut, updateProfile
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 import {
-  getDatabase,
-  ref,
-  set,
-  get,
-  push,
-  query,
-  orderByChild,
-  startAt,
-  onChildAdded
+  getDatabase, ref, set, get, push, query, orderByChild, startAt, onChildAdded
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
-// ========== FIREBASE CONFIG ==========
-// 🔧 Replace these with the values from your Firebase project settings
-// (Project settings -> General -> Your apps -> SDK setup and configuration).
-// Since this uses the Realtime Database (not Firestore), make sure
-// "databaseURL" is filled in — you'll find it on the Realtime Database page.
+/* ============================================================
+   MEME RNG
+   1. Config & data      4. Rolling          7. Auth & account
+   2. State & helpers    5. Inventory        8. Admin & broadcasts
+   3. Audio & UI         6. Placed memes     9. Panels & boot
+   ============================================================ */
+
+/* ============================================================
+   1. CONFIG & DATA
+   ============================================================ */
+
+// Firebase web config (public by design — security comes from your database rules).
 const firebaseConfig = {
   apiKey: "AIzaSyB4dgpFEh29DVgfcSd_nEtEmPz8GQPlE0c",
   authDomain: "meme-rng.firebaseapp.com",
@@ -36,1165 +31,857 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
 
-const memes = [
-  { name: "Bruh", chance: 50, img: "https://iili.io/fpYGZZB.jpg", color: "#aaa", rarity: "Common", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/fredchaferfrommedia-bruh-1-120133.mp3" },
-  { name: "Bing Chilling", chance: 50, img: "https://iili.io/qHCIC0B.png", color: "#aaa", rarity: "Common", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/bing-chilling_fcdGgUc.mp3" },
-  { name: "Sheesh", chance: 25, img: "https://iili.io/fpYGg4e.jpg", color: "#4dff88", rarity: "Uncommon", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/original-sheesh-%5BAudioTrimmer.com%5D.mp3"},
-  { name: "Pepe", chance: 25, img: "https://iili.io/fpaN8cN.jpg", color: "#4dff88", rarity: "Uncommon", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/el-pepe_hGUhiaM.mp3"},
-  { name: "Sus", chance: 12.5, img: "https://iili.io/fpYGUG9.webp", color: "#4da6ff", rarity: "Rare", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/53b1bab6-a8c3-4a1a-82db-7110ce1c29ef_6KNDGWD.mp3"},
-  { name: "Gigachad", chance: 12.5, img: "https://iili.io/fpYG6Yb.webp", color: "#ffae00", rarity: "Epic", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/gigachad-theme-music-%5BAudioTrimmer.com%5D.mp3"},
-  { name: "Stick Bug", chance: 12.5, img: "https://iili.io/fykVLkG.webp", color: "#ffae00", rarity: "Epic", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/bugged-%5BAudioTrimmer.com%5D.mp3"},
-  { name: "Derpy Squarepants", chance: 5, img: "https://iili.io/fy9OkJt.webp", color: "#ff757c", rarity: "Mythic", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/spongebob-boowomp.mp3"},
-  { name: "Bad Apple", chance: 5, img: "https://iili.io/fyX9qkx.jpg", color: "#ff757c", rarity: "Mythic", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/bad-apple-%5BAudioTrimmer.com%5D.mp3"},
-  { name: "9 + 10", chance: 5, img: "https://iili.io/q9lnZbt.webp", color: "#ff757c", rarity: "Mythic", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/9-10-vine-rnm2az4_F0Tn5hMt.mp3"},
-  { name: "OHIO FINAL BOSS", chance: 2.5, img: "https://iili.io/fpYGLTQ.jpg", color: "#ff004c", rarity: "Legendary", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/ohio-final-boss-theme-made-with-Voicemod-%5BAudioTrimmer.com%5D.mp3"},
-  { name: "Keyboard cat", chance: 2.5, img: "https://iili.io/fyjDgrg.jpg", color: "#ff004c", rarity: "Legendary", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/keyboardcat-%5BAudioTrimmer.com%5D.mp3"},
-  { name: "Golden Dandelion", chance: 2.5, img: "https://iili.io/qHnWJQR.jpg", color: "#ff004c", rarity: "Legendary", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/golden-dandelion.mp3"},
-  { name: "Raah Skeleton", chance: 0.5, img: "https://iili.io/fpaNSSI.gif", color: "#5c5c5c", rarity: "Secret", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/rahh-skeletons-%5BAudioTrimmer.com%5D.mp3"},
-  { name: "Do you know da wae", chance: 0.5, img: "https://iili.io/fy9WysS.gif", color: "#5c5c5c", rarity: "Secret", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/do-you-know-the-way-%5BAudioTrimmer.com%5D.mp3"},
-  { name: "RickRoll", chance: 0.5, img: "https://iili.io/fywJtAg.gif", color: "#5c5c5c", rarity: "Secret", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/epic-%5BAudioTrimmer.com%5D.mp3"},
-  { name: "Oie oie eye eye", chance: 0.5, img: "https://iili.io/q24wsRa.gif", color: "#5c5c5c", rarity: "Secret", sound: "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/oi-oi-oe-oi-a-eye-eye-%5BAudioTrimmer.com%5D.mp3"},
-];
+const COOLDOWN_MS = 4000;
+const STAR_MS = 7500;          // length of the Secret reveal animation
+const ROLL_STEPS = 18;         // how many frames the roll animation shows
+const MAX_LUCK = 10;
+const LUCK_PER_LEVEL = 0.1;    // +10% weight on lucky rarities per level
+const MAX_INVENTORY = 250;
+const MEME_SIZE = 100;         // px, placed memes
+
+const SOUND_BASE = "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/";
 
 const ADMIN_EMAILS = [
   "r2ftzu1ha2vy@gmail.com",
   "muhamad_afif_rayyan_danial@students.edu.sg",
 ];
 
-const DEFAULT_UPGRADES = { luck: 0, quickRollUnlocked: false, inventoryLimit: 50 };
-const DEFAULT_STATS = { totalRolls: 0, memes: {}, rarities: {} };
-
-// Upgrade-related stats
-let upgrades = { ...DEFAULT_UPGRADES };
-
-let isAdmin = false;
-let quickRoll = false;
-let stats = { ...DEFAULT_STATS };
-let usedCodes = {};
-
+// NOTE: codes and the admin list are checked in the browser only.
+// Enforce them in your Firebase rules / a Cloud Function before relying on them.
 const REDEEM_CODES = {
-  "RELEASE": { meme: "Gigachad", amount: 1 },
-  "BETA": { meme: "Derpy Squarepants", amount: 1 },
+  RELEASE: { meme: "Gigachad", amount: 1 },
+  BETA: { meme: "Derpy Squarepants", amount: 1 },
 };
 
-// DOM elements
-const button = document.getElementById("rngButton");
-const memeImg = document.getElementById("memeImg");
-const result = document.getElementById("result");
-const cooldownFill = document.getElementById("cooldownFill");
-const inventoryEl = document.getElementById("inventory");
-const flash = document.getElementById("flash");
-const rollBox = document.getElementById("rollBox");
-const adminToggleBtn = document.getElementById("adminToggleBtn");
-const adminPanelWrapper = document.getElementById("adminPanelWrapper");
+const RARITY_COLORS = {
+  Common: "#aaa", Uncommon: "#4dff88", Rare: "#4da6ff", Epic: "#ffae00",
+  Mythic: "#ff757c", Legendary: "#ff004c", Secret: "#5c5c5c",
+};
+const LUCKY_RARITIES = ["Epic", "Legendary", "Secret"];
 
-adminToggleBtn.onclick = () => {
-  adminPanelWrapper.classList.toggle("open");
+const meme = (name, chance, rarity, img, soundFile) => ({
+  name, chance, rarity, img,
+  color: RARITY_COLORS[rarity],
+  sound: SOUND_BASE + encodeURIComponent(soundFile),
+});
+
+const memes = [
+  meme("Bruh", 50, "Common", "https://iili.io/fpYGZZB.jpg", "fredchaferfrommedia-bruh-1-120133.mp3"),
+  meme("Bing Chilling", 50, "Common", "https://iili.io/qHCIC0B.png", "bing-chilling_fcdGgUc.mp3"),
+  meme("Sheesh", 25, "Uncommon", "https://iili.io/fpYGg4e.jpg", "original-sheesh-[AudioTrimmer.com].mp3"),
+  meme("Pepe", 25, "Uncommon", "https://iili.io/fpaN8cN.jpg", "el-pepe_hGUhiaM.mp3"),
+  meme("Sus", 12.5, "Rare", "https://iili.io/fpYGUG9.webp", "53b1bab6-a8c3-4a1a-82db-7110ce1c29ef_6KNDGWD.mp3"),
+  meme("Gigachad", 12.5, "Epic", "https://iili.io/fpYG6Yb.webp", "gigachad-theme-music-[AudioTrimmer.com].mp3"),
+  meme("Stick Bug", 12.5, "Epic", "https://iili.io/fykVLkG.webp", "bugged-[AudioTrimmer.com].mp3"),
+  meme("Derpy Squarepants", 5, "Mythic", "https://iili.io/fy9OkJt.webp", "spongebob-boowomp.mp3"),
+  meme("Bad Apple", 5, "Mythic", "https://iili.io/fyX9qkx.jpg", "bad-apple-[AudioTrimmer.com].mp3"),
+  meme("9 + 10", 5, "Mythic", "https://iili.io/q9lnZbt.webp", "9-10-vine-rnm2az4_F0Tn5hMt.mp3"),
+  meme("OHIO FINAL BOSS", 2.5, "Legendary", "https://iili.io/fpYGLTQ.jpg", "ohio-final-boss-theme-made-with-Voicemod-[AudioTrimmer.com].mp3"),
+  meme("Keyboard cat", 2.5, "Legendary", "https://iili.io/fyjDgrg.jpg", "keyboardcat-[AudioTrimmer.com].mp3"),
+  meme("Golden Dandelion", 2.5, "Legendary", "https://iili.io/qHnWJQR.jpg", "golden-dandelion.mp3"),
+  meme("Raah Skeleton", 0.5, "Secret", "https://iili.io/fpaNSSI.gif", "rahh-skeletons-[AudioTrimmer.com].mp3"),
+  meme("Do you know da wae", 0.5, "Secret", "https://iili.io/fy9WysS.gif", "do-you-know-the-way-[AudioTrimmer.com].mp3"),
+  meme("RickRoll", 0.5, "Secret", "https://iili.io/fywJtAg.gif", "epic-[AudioTrimmer.com].mp3"),
+  meme("Oie oie eye eye", 0.5, "Secret", "https://iili.io/q24wsRa.gif", "oi-oi-oe-oi-a-eye-eye-[AudioTrimmer.com].mp3"),
+];
+
+const findMeme = name => memes.find(m => m.name === name);
+
+/* ============================================================
+   2. STATE & HELPERS
+   ============================================================ */
+
+// Factories (not shared objects) so a reset or new login can never inherit old nested data.
+const newStats = () => ({ totalRolls: 0, memes: {}, rarities: {} });
+const newUpgrades = () => ({ luck: 0, quickRollUnlocked: false, inventoryLimit: 50 });
+
+const state = {
+  uid: null,
+  username: null,
+  email: null,
+  isAdmin: false,
+  inventory: {},
+  placed: [],
+  stats: newStats(),
+  upgrades: newUpgrades(),
+  usedCodes: {},
+  seenMessageTs: 0,   // cursors so each broadcast is applied exactly once
+  seenMemeTs: 0,
 };
 
-const authForm = document.getElementById("authForm");
-const userInfo = document.getElementById("userInfo");
-const welcome = document.getElementById("welcome");
-const loginBtn = document.getElementById("loginBtn");
-const logoutBtn = document.getElementById("logoutBtn");
-const deleteBtn = document.getElementById("deleteBtn");
-const usernameInput = document.getElementById("usernameInput");
-const emailInput = document.getElementById("emailInput");
-const passwordInput = document.getElementById("passwordInput");
-
-let currentUserId = null;
-let currentUser = null;
-let currentEmail = null;
-
-const rollLoopSound = new Audio("https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/matthewvakaliuk73627-mouse-click-290204-%5BAudioTrimmer.com%5D.mp3");
-rollLoopSound.loop = true;
-rollLoopSound.volume = 0.6;
-
-const rollEndSound = new Audio("https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/floraphonic-tada-military-1-183974.mp3");
-rollEndSound.volume = 0.7;
-
-const rarityEl = document.createElement("div");
-rarityEl.style.fontWeight = "bold";
-rarityEl.style.marginBottom = "6px";
-rollBox.insertBefore(rarityEl, memeImg);
-
-const COOLDOWN = 4000;
-let locked = false;
-let inventory = {};
-let placedMemes = [];
+let cooling = false;      // roll cooldown running
+let revealing = false;    // Secret star animation running
+let quickRoll = false;
 let selectedMeme = null;
 let previewImg = null;
-
-// Cursors so we only ever apply each broadcast message/meme once (fixes the
-// old "re-shows every 5s forever" and "duplicates meme every 5s" bugs).
-let lastSeenMessageTs = 0;
-let lastSeenMemeTs = 0;
-
-let dragging = null;
-let offset = { x: 0, y: 0 };
-
-// Live listeners for global broadcasts, torn down on logout so a signed-out
-// user never keeps receiving another account's realtime updates.
+let pointer = { x: 0, y: 0 };
 let unsubscribeMessages = null;
 let unsubscribeMemes = null;
 
-// ========== AUTH STATE ==========
-onAuthStateChanged(auth, async (user) => {
-  if (!user) {
-    handleSignedOut();
-    return;
-  }
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  currentEmail = user.email;
-  currentUserId = user.uid;
-  isAdmin = ADMIN_EMAILS.includes(currentEmail);
+// SVG icons live in a sprite in index.html
+const icon = (name, cls = "") => `<svg class="ico ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+const withIcon = (name, text, cls) => `${icon(name, cls)} ${esc(text)}`;
+const setStatus = (el, kind, text) =>
+  el.innerHTML = withIcon({ ok: "check", err: "x", warn: "warn" }[kind], text, kind);
 
-  let data = null;
-  try {
-    const snap = await get(ref(db, "users/" + currentUserId));
-    data = snap.exists() ? snap.val() : null;
-  } catch (err) {
-    console.error("Failed to load user data:", err);
-  }
+const countOf = name => state.inventory[name] || 0;
+const inventoryCount = () => Object.values(state.inventory).reduce((sum, n) => sum + (Number(n) || 0), 0);
+const addMeme = (name, n = 1) => { state.inventory[name] = countOf(name) + n; };
+const removeMeme = (name, n = 1) => {
+  const left = countOf(name) - n;
+  if (left > 0) state.inventory[name] = left; else delete state.inventory[name];
+};
+const luckyOwned = () => memes
+  .filter(m => LUCKY_RARITIES.includes(m.rarity))
+  .reduce((sum, m) => sum + countOf(m.name), 0);
 
-  currentUser = data?.username || user.displayName || "User";
+// DOM
+const rngButton = $("rngButton");
+const quickRollBtn = $("quickRollBtn");
+const memeImg = $("memeImg");
+const resultEl = $("result");
+const rarityLabel = $("rarityLabel");
+const cooldownFill = $("cooldownFill");
+const inventoryEl = $("inventory");
+const flashEl = $("flash");
+const authForm = $("authForm");
+const userInfo = $("userInfo");
 
-  authForm.style.display = "none";
-  userInfo.style.display = "block";
-
-  welcome.textContent = isAdmin
-    ? `👑 ADMIN ${currentUser}`
-    : `👋 ${currentUser} [${currentUserId}]`;
-
-  if (isAdmin) {
-    enableAdminPanel();
-    enableGlobalAdminPanel();
-    adminToggleBtn.style.display = "block";
-  }
-
-  loadUserData(data);
-  listenForGlobalUpdates();
-});
-
-function restorePlacedMemes() {
-  document.querySelectorAll("[data-id]").forEach(e => e.remove());
-
-  placedMemes.forEach(data => {
-    const { wrap, img } = createPlacedImg(data);
-    document.body.appendChild(wrap);
-
-    // 🔊 Desktop double-click
-    img.addEventListener("dblclick", e => {
-      e.stopPropagation();
-      const meme = memes.find(m => m.name === data.name);
-      if (!meme?.sound) return;
-
-      const audio = new Audio(meme.sound);
-      audio.volume = 0.9;
-      playSound(audio);
-    });
-
-    // 📱 Mobile double-tap
-    let lastTap = 0;
-    img.addEventListener("touchend", e => {
-      const now = Date.now();
-      if (now - lastTap < 300) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const meme = memes.find(m => m.name === data.name);
-        if (!meme?.sound) return;
-
-        const audio = new Audio(meme.sound);
-        audio.volume = 0.9;
-        playSound(audio);
-      }
-      lastTap = now;
-    });
-  });
-}
-
-function buildUserRecord() {
-  return {
-    username: currentUser,
-    inventory,
-    placedMemes,
-    stats,
-    upgrades,
-    usedCodes,
-    lastSeenMessageTs,
-    lastSeenMemeTs
-  };
-}
-
-let saveTimeout = null;
+// Debounced cloud save: rapid actions (dragging, deleting, redeeming) collapse into one write.
+let saveTimer = null;
 function saveUserData() {
-  if (!currentUserId) return;
-
-  // Debounce so rapid actions (dragging, deleting, redeeming) don't fire a
-  // write per event — the last write within 300ms wins.
-  clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => {
-    set(ref(db, "users/" + currentUserId), buildUserRecord())
-      .catch(err => console.error("Failed to save user data:", err));
+  if (!state.uid) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    if (!state.uid) return; // signed out while a save was pending
+    set(ref(db, "users/" + state.uid), {
+      username: state.username,
+      inventory: state.inventory,
+      placedMemes: state.placed,
+      stats: state.stats,
+      upgrades: state.upgrades,
+      usedCodes: state.usedCodes,
+      lastSeenMessageTs: state.seenMessageTs,
+      lastSeenMemeTs: state.seenMemeTs,
+    }).catch(err => console.error("Failed to save user data:", err));
   }, 300);
 }
 
-function rollingAnimation(finalMeme) {
-  let delay = 50;        // start FAST
-  let maxDelay = 380;   // end SLOW
-  let steps = 18;       // how many slowdowns
-  let step = 0;
+/* ============================================================
+   3. AUDIO & UI FEEDBACK
+   ============================================================ */
 
-  function tick() {
-    const temp = memes[Math.floor(Math.random() * memes.length)];
+const rollLoop = new Audio(SOUND_BASE + "matthewvakaliuk73627-mouse-click-290204-%5BAudioTrimmer.com%5D.mp3");
+rollLoop.loop = true;
+rollLoop.volume = 0.6;
 
-    memeImg.src = temp.img;
-    result.textContent = temp.name;
-    result.style.color = temp.color;
-    rarityEl.textContent = temp.rarity;
-
-    // 🔊 slow down sound pitch
-    rollLoopSound.playbackRate = 1.4 - (step / steps) * 0.7;
-
-    step++;
-
-    if (step < steps) {
-      delay += (maxDelay - delay) / (steps - step);
-      setTimeout(tick, delay);
-    } else {
-      finishRoll(finalMeme);
-    }
-  }
-
-  tick();
-}
-
-// ========== RNG ==========
-function rollRNG() {
-  const totalChance = memes.reduce((sum, m) => {
-    let chance = m.chance;
-    if (["Epic", "Legendary", "Secret"].includes(m.rarity)) {
-      chance *= 1 + upgrades.luck * 0.1;
-    }
-    return sum + chance;
-  }, 0);
-
-  let r = Math.random() * totalChance;
-  let sum = 0;
-
-  for (let m of memes) {
-    let chance = m.chance;
-
-    // Luck boost
-    if (["Epic", "Legendary", "Secret"].includes(m.rarity)) {
-      chance *= 1 + upgrades.luck * 0.1; // +10% per luck level
-    }
-
-    sum += chance;
-    if (r <= sum) return m;
-  }
-
-  return memes[memes.length - 1];
-}
+const rollEnd = new Audio(SOUND_BASE + "floraphonic-tada-military-1-183974.mp3");
+rollEnd.volume = 0.7;
 
 function playSound(audio) {
   audio.pause();
   audio.currentTime = 0;
-  audio.play().catch(() => {});
+  audio.play().catch(() => {}); // autoplay can be blocked until the first interaction
 }
 
-// ========== COOLDOWN ==========
+function playMemeSound(m) {
+  if (!m?.sound) return;
+  const audio = new Audio(m.sound);
+  audio.volume = 0.9;
+  playSound(audio);
+}
+
+function screenFlash() {
+  flashEl.classList.add("flash");
+  setTimeout(() => flashEl.classList.remove("flash"), 300);
+}
+
+// Small pill that slides in at the top, then out. `html` must already be escaped.
+function showFloatingText(html, color = "#fff") {
+  const el = document.createElement("div");
+  el.className = "float-text";
+  el.style.color = color;
+  el.innerHTML = html;
+  document.body.appendChild(el);
+
+  requestAnimationFrame(() => {
+    el.style.top = "50px";
+    el.style.opacity = "1";
+  });
+  setTimeout(() => {
+    el.style.top = "0px";
+    el.style.opacity = "0";
+    el.addEventListener("transitionend", () => el.remove(), { once: true });
+  }, 1000);
+}
+
+function showGlobalMessage(text) {
+  const container = $("globalMessageContainer");
+  const msg = document.createElement("div");
+  msg.className = "global-message";
+  msg.innerHTML = withIcon("globe", text);
+  container.appendChild(msg);
+
+  setTimeout(() => {
+    msg.classList.add("fade-out");
+    msg.addEventListener("animationend", () => msg.remove(), { once: true });
+  }, 5000);
+}
+
+/* ============================================================
+   4. ROLLING
+   ============================================================ */
+
+function pickMeme() {
+  const boost = 1 + state.upgrades.luck * LUCK_PER_LEVEL;
+  const weights = memes.map(m => m.chance * (LUCKY_RARITIES.includes(m.rarity) ? boost : 1));
+  let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+
+  for (let i = 0; i < memes.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return memes[i];
+  }
+  return memes[memes.length - 1];
+}
+
+function displayMeme(m) {
+  memeImg.src = m.img;
+  resultEl.textContent = m.name;
+  resultEl.style.color = m.color;
+  rarityLabel.textContent = m.rarity;
+}
+
+const isLocked = () => cooling || revealing;
+const syncRollButton = () => rngButton.classList.toggle("disabled", isLocked());
+
 function startCooldown() {
-  locked = true;
-  button.classList.add("disabled");
+  cooling = true;
+  syncRollButton();
+
   cooldownFill.style.transition = "none";
   cooldownFill.style.width = "100%";
+  void cooldownFill.offsetWidth; // flush styles so the transition below starts from 100%
+  cooldownFill.style.transition = `width ${COOLDOWN_MS}ms linear`;
+  cooldownFill.style.width = "0%";
 
-  setTimeout(() => {
-    cooldownFill.style.transition = `width ${COOLDOWN}ms linear`;
-    cooldownFill.style.width = "0%";
-  }, 10);
-
-  setTimeout(() => {
-    locked = false;
-    button.classList.remove("disabled");
-  }, COOLDOWN);
-}
-function getTotalInventoryCount() {
-  return Object.values(inventory)
-    .map(x => Number(x) || 0) // ensure all values are numbers
-    .reduce((a, b) => a + b, 0);
+  setTimeout(() => { cooling = false; syncRollButton(); }, COOLDOWN_MS);
 }
 
-// ========== INVENTORY ==========
-function updateInventory() {
-  inventoryEl.innerHTML = "";
+function runRollAnimation(finalMeme) {
+  let delay = 50;       // start fast…
+  const maxDelay = 380; // …and ease out slowly
+  let step = 0;
 
-  for (let name in inventory) {
-    const row = document.createElement("div");
-    row.className = "inv-item";
-    row.style.display = "flex";
-    row.style.alignItems = "center";
-    row.style.justifyContent = "space-between";
-    row.style.gap = "6px";
+  (function tick() {
+    displayMeme(memes[Math.floor(Math.random() * memes.length)]);
+    rollLoop.playbackRate = 1.4 - (step / ROLL_STEPS) * 0.7; // pitch drops as it slows
 
-    const label = document.createElement("span");
-    label.textContent = `${name} [${inventory[name]}x]`;
-    label.style.flex = "1";
+    if (++step < ROLL_STEPS) {
+      delay += (maxDelay - delay) / (ROLL_STEPS - step);
+      setTimeout(tick, delay);
+    } else {
+      finishRoll(finalMeme);
+    }
+  })();
+}
 
-    const del = document.createElement("button");
-    del.textContent = "−";
-    del.style.width = "26px";
-    del.style.height = "26px";
-    del.style.border = "none";
-    del.style.borderRadius = "4px";
-    del.style.background = "#ff4d4d";
-    del.style.color = "white";
-    del.style.fontWeight = "bold";
-    del.style.cursor = "pointer";
+function finishRoll(m) {
+  const { stats } = state;
+  stats.totalRolls++;
+  stats.memes[m.name] = (stats.memes[m.name] || 0) + 1;
+  stats.rarities[m.rarity] = (stats.rarities[m.rarity] || 0) + 1;
 
-    // Single click handler (works for touch too, via the browser's
-    // synthesized click) — fixes the old bug where touchstart AND click
-    // both fired and decremented inventory twice per tap on mobile.
-    del.addEventListener("click", e => {
-      e.stopPropagation();
-      inventory[name]--;
-      if (inventory[name] <= 0) delete inventory[name];
-      updateInventory();
-      updateUpgradeButtons?.();
-      refreshUpgradesUI?.();
-    });
+  rollLoop.pause();
+  rollLoop.currentTime = 0;
+  rollLoop.playbackRate = 1.4;
+  playSound(rollEnd);
 
-    row.append(label, del);
-    inventoryEl.appendChild(row);
+  if (inventoryCount() + 1 > state.upgrades.inventoryLimit) {
+    showFloatingText(withIcon("box", "Inventory full — meme discarded!"), "#ff757c");
+  } else {
+    addMeme(m.name);
+    renderInventory();
   }
 
-  makeInventorySelectable();
+  if (["Epic", "Legendary"].includes(m.rarity)) screenFlash();
+
+  if (m.rarity === "Secret") {
+    playStarReveal(m);
+  } else {
+    displayMeme(m);
+    playMemeSound(m);
+  }
+
+  renderStats();
   saveUserData();
 }
 
-// ========== FLASH ==========
-function screenFlash() {
-  flash.classList.add("flash");
-  setTimeout(() => flash.classList.remove("flash"), 300);
+function playStarReveal(m) {
+  const overlay = $("starOverlay");
+  const parts = [$("starGlow"), $("starReveal")];
+  const resetParts = () => parts.forEach(p => {
+    p.style.animation = "none";
+    p.style.transform = "scale(0.2) rotate(0deg)";
+  });
+
+  revealing = true;
+  syncRollButton();
+  overlay.style.display = "flex";
+
+  resetParts();
+  void overlay.offsetWidth;
+  parts.forEach(p => { p.style.animation = `starGrowSpin ${STAR_MS}ms linear forwards`; });
+
+  setTimeout(() => { screenFlash(); displayMeme(m); playMemeSound(m); }, STAR_MS - 200);
+  setTimeout(() => {
+    resetParts();
+    overlay.style.display = "none";
+    revealing = false;
+    syncRollButton();
+  }, STAR_MS);
 }
 
-button.addEventListener("click", () => {
-  if (locked) return;
-  if (!currentUserId) {
-    alert("Please sign in first!");
-    return;
-  }
+rngButton.addEventListener("click", () => {
+  if (isLocked()) return;
+  if (!state.uid) { alert("Please sign in first!"); return; }
 
   startCooldown();
-
-  const final = rollRNG();
+  const result = pickMeme();
 
   if (quickRoll) {
-    finishRoll(final);
+    finishRoll(result);
   } else {
-    playSound(rollLoopSound);
-    rollingAnimation(final);
+    playSound(rollLoop);
+    runRollAnimation(result);
   }
 });
 
-function finishRoll(final) {
-  stats.totalRolls++;
-  stats.memes[final.name] = (stats.memes[final.name] || 0) + 1;
-  stats.rarities[final.rarity] = (stats.rarities[final.rarity] || 0) + 1;
+quickRollBtn.addEventListener("click", () => {
+  if (quickRollBtn.disabled) return;
+  quickRoll = !quickRoll;
+  quickRollBtn.innerHTML = `${icon("bolt")} Quick Roll: ${quickRoll ? "ON" : "OFF"}`;
+});
 
-  rollLoopSound.pause();
-  rollLoopSound.currentTime = 0;
-  rollLoopSound.playbackRate = 1.4;
+/* ============================================================
+   5. INVENTORY & UPGRADES
+   ============================================================ */
 
-  playSound(rollEndSound);
+function renderInventory() {
+  inventoryEl.replaceChildren(
+    ...Object.entries(state.inventory).map(([name, count]) => buildInventoryRow(name, count))
+  );
+}
 
-  // Calculate inventory including this new meme
-  const totalItems = getTotalInventoryCount() + 1;
+function buildInventoryRow(name, count) {
+  const row = document.createElement("div");
+  row.className = "inv-item" + (selectedMeme === name ? " selected" : "");
+  row.dataset.name = name;
 
-  if (totalItems > upgrades.inventoryLimit) {
-    showFloatingText("📦 Inventory full — meme discarded!", "#ff757c");
-  } else {
-    // Add meme safely
-    inventory[final.name] = (Number(inventory[final.name]) || 0) + 1;
+  const label = document.createElement("span");
+  label.textContent = `${name} [${count}x]`;
+
+  const del = document.createElement("button");
+  del.className = "inv-del";
+  del.textContent = "−";
+  del.setAttribute("aria-label", `Discard one ${name}`);
+  del.addEventListener("click", e => {
+    e.stopPropagation();
+    removeMeme(name);
+    if (!countOf(name) && selectedMeme === name) clearSelection();
     updateInventory();
-  }
-
-  // Rare flash
-  if (["Epic", "Legendary"].includes(final.rarity)) {
-    screenFlash();
-  }
-
-  if (final.rarity === "Secret") {
-    // Secret memes: show via star animation
-    playStarReveal(final);
-  } else {
-    // Normal display
-    memeImg.src = final.img;
-    result.textContent = final.name;
-    result.style.color = final.color;
-    rarityEl.textContent = final.rarity;
-
-    if (final.sound) {
-      const memeSound = new Audio(final.sound);
-      memeSound.volume = 0.9;
-      playSound(memeSound);
-    }
-  }
-
-  updateStatsUI();
-  saveUserData();
-}
-
-function makeInventorySelectable() {
-  document.querySelectorAll(".inv-item").forEach(item => {
-    item.onclick = () => {
-      const name = item.querySelector("span").textContent.split(" [")[0];
-      selectedMeme = name; // store name only
-
-      document.querySelectorAll(".inv-item").forEach(i => i.style.background = "");
-      item.style.background = "#4caf50";
-
-      // show preview
-      previewImg?.remove();
-      const memeObj = memes.find(m => m.name === selectedMeme);
-      if (!memeObj) return;
-
-      previewImg = document.createElement("img");
-      previewImg.src = memeObj.img;
-      previewImg.style.position = "absolute";
-      previewImg.style.width = "100px";
-      previewImg.style.pointerEvents = "none";
-      previewImg.style.zIndex = "999";
-      previewImg.style.touchAction = "none";
-      document.body.appendChild(previewImg);
-    };
   });
+
+  row.addEventListener("click", () => selectMeme(name));
+  row.append(label, del);
+  return row;
 }
 
-// ========== PREVIEW FOLLOW ==========
-document.addEventListener("mousemove", movePreview);
-document.addEventListener("touchmove", e => movePreview(e.touches[0]), { passive: false });
-
-function movePreview(e) {
-  if (!previewImg) return;
-  const rect = previewImg.getBoundingClientRect();
-  previewImg.style.left = e.pageX - rect.width / 2 + "px";
-  previewImg.style.top = e.pageY - rect.height / 2 + "px";
-}
-
-// ========== PLACE MEME ==========
-document.addEventListener("click", placeMeme);
-document.addEventListener("touchend", e => placeMeme(e.changedTouches[0]));
-
-function placeMeme(e) {
-  if (!selectedMeme) return;
-
-  const x = e.pageX || (e.touches && e.touches[0].pageX);
-  const y = e.pageY || (e.touches && e.touches[0].pageY);
-  if (!x || !y) return;
-
-  if (e.target.closest("[data-id]")) return;
-  if (e.target.closest(".inv-item")) return;
-
-  // remove preview
-  if (previewImg) {
-    previewImg.remove();
-    previewImg = null;
-  }
-
-  const memeObj = memes.find(m => m.name === selectedMeme);
-  if (!memeObj) return;
-
-  const data = {
-    id: crypto.randomUUID(),
-    name: memeObj.name,
-    img: memeObj.img,
-    x: x - 50,
-    y: y - 50
-  };
-
-  placedMemes.push(data);
-  const { wrap } = createPlacedImg(data);
-  document.body.appendChild(wrap);
-
-  // Decrement inventory for both normal users AND admins
-  if (inventory[memeObj.name]) {
-    inventory[memeObj.name]--;
-    if (inventory[memeObj.name] <= 0) delete inventory[memeObj.name];
-  }
-
-  selectedMeme = null;
-  updateInventory(); // removes the button if count is 0
+// Re-render everything that depends on the inventory, then save.
+function updateInventory() {
+  renderInventory();
+  renderUpgrades();
   saveUserData();
 }
 
-// ========== CREATE PLACED MEME ==========
-function createPlacedImg(data) {
+const upgradeStatus = $("upgradeStatus");
+
+function spendLucky(amount) {
+  let remaining = amount;
+  for (const m of memes.filter(x => LUCKY_RARITIES.includes(x.rarity))) {
+    const used = Math.min(countOf(m.name), remaining);
+    if (used) removeMeme(m.name, used);
+    remaining -= used;
+    if (remaining <= 0) break;
+  }
+}
+
+const upgradeDefs = [
+  {
+    el: $("upgradeLuckBtn"),
+    maxed: () => state.upgrades.luck >= MAX_LUCK,
+    canBuy: () => luckyOwned() >= 2,
+    failText: "Need 2 Epic+ memes",
+    buy() {
+      spendLucky(2);
+      state.upgrades.luck++;
+      return ["clover", `Luck upgraded → ${state.upgrades.luck}`, "ok"];
+    },
+  },
+  {
+    el: $("unlockQuickRollBtn"),
+    maxed: () => state.upgrades.quickRollUnlocked,
+    canBuy: () => countOf("Gigachad") >= 1,
+    failText: "Need 1 Gigachad",
+    buy() {
+      removeMeme("Gigachad");
+      state.upgrades.quickRollUnlocked = true;
+      return ["bolt", "Quick Roll unlocked!", "warn"];
+    },
+  },
+  {
+    el: $("upgradeInventoryBtn"),
+    maxed: () => state.upgrades.inventoryLimit >= MAX_INVENTORY,
+    canBuy: () => countOf("Pepe") >= 3,
+    failText: "Need 3 Pepe",
+    buy() {
+      removeMeme("Pepe", 3);
+      state.upgrades.inventoryLimit += 5;
+      return ["box", `Inventory limit → ${state.upgrades.inventoryLimit}`, ""];
+    },
+  },
+];
+
+upgradeDefs.forEach(def => def.el.addEventListener("click", () => {
+  if (def.maxed()) return;
+  if (!def.canBuy()) { setStatus(upgradeStatus, "err", def.failText); return; }
+
+  const [iconName, text, cls] = def.buy();
+  upgradeStatus.innerHTML = withIcon(iconName, text, cls);
+  quickRollBtn.disabled = !state.upgrades.quickRollUnlocked;
+  updateInventory();
+}));
+
+function renderUpgrades() {
+  upgradeDefs.forEach(def => {
+    def.el.style.display = def.maxed() ? "none" : "block";
+    def.el.disabled = def.maxed() || !def.canBuy();
+  });
+  quickRollBtn.disabled = !state.upgrades.quickRollUnlocked;
+}
+
+function renderStats() {
+  const { stats } = state;
+  const list = obj => Object.entries(obj).map(([k, v]) => `• ${esc(k)}: ${v}<br>`).join("");
+
+  $("statsContent").innerHTML =
+    `<b>Total Rolls:</b> ${stats.totalRolls}<br><br>` +
+    `<b>Memes:</b><br>${list(stats.memes)}` +
+    `<br><b>Rarities:</b><br>${list(stats.rarities)}`;
+}
+
+/* ============================================================
+   6. PLACED MEMES
+   ============================================================ */
+
+// Clicks on these never place a meme.
+const NO_PLACE_SELECTOR =
+  "button, input, select, label, #rngButton, #statsToggle, #authBox, #statsPanel, " +
+  "#adminPanelWrapper, #redeemBox, #upgradeWrapper, .inv-item, .placed-meme";
+
+function selectMeme(name) {
+  const m = findMeme(name);
+  if (!m) return;
+
+  selectedMeme = name;
+  inventoryEl.querySelectorAll(".inv-item").forEach(row =>
+    row.classList.toggle("selected", row.dataset.name === name));
+
+  previewImg?.remove();
+  previewImg = document.createElement("img");
+  previewImg.className = "meme-preview";
+  previewImg.src = m.img;
+  document.body.appendChild(previewImg);
+  movePreview();
+}
+
+function clearSelection() {
+  selectedMeme = null;
+  previewImg?.remove();
+  previewImg = null;
+  inventoryEl.querySelectorAll(".inv-item.selected").forEach(r => r.classList.remove("selected"));
+}
+
+function movePreview() {
+  if (!previewImg) return;
+  previewImg.style.left = pointer.x - MEME_SIZE / 2 + "px";
+  previewImg.style.top = pointer.y - MEME_SIZE / 2 + "px";
+}
+
+document.addEventListener("pointermove", e => {
+  pointer = { x: e.pageX, y: e.pageY };
+  movePreview();
+});
+
+document.addEventListener("click", e => {
+  if (!selectedMeme || e.target.closest(NO_PLACE_SELECTOR)) return;
+  placeSelectedMeme(e.pageX, e.pageY);
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") clearSelection();
+
+  // Admin shortcut: preview the Secret reveal
+  if (e.key === "=" && state.isAdmin && !revealing && !e.target.closest("input, select, textarea")) {
+    const pool = memes.filter(m => LUCKY_RARITIES.includes(m.rarity));
+    playStarReveal(pool[Math.floor(Math.random() * pool.length)]);
+  }
+});
+
+function placeSelectedMeme(x, y) {
+  const m = findMeme(selectedMeme);
+  if (!m || !countOf(m.name)) { clearSelection(); return; }
+
+  const data = { id: crypto.randomUUID(), name: m.name, img: m.img, x: x - MEME_SIZE / 2, y: y - MEME_SIZE / 2 };
+  state.placed.push(data);
+  mountPlacedMeme(data);
+
+  removeMeme(m.name);
+  clearSelection();
+  updateInventory();
+}
+
+function mountPlacedMeme(data) {
   const wrap = document.createElement("div");
-  wrap.style.position = "absolute";
+  wrap.className = "placed-meme";
+  wrap.dataset.id = data.id;
   wrap.style.left = data.x + "px";
   wrap.style.top = data.y + "px";
-  wrap.style.width = "100px";
-  wrap.style.height = "100px";
-  wrap.style.zIndex = "998";
-  wrap.dataset.id = data.id;
 
   const img = document.createElement("img");
   img.src = data.img;
-  img.style.width = "100%";
-  img.style.height = "100%";
-  img.style.touchAction = "none";
+  img.alt = data.name;
+  img.draggable = false;
 
   const del = document.createElement("button");
-  del.textContent = "✖";
-  del.style.position = "absolute";
-  del.style.top = "2px";
-  del.style.right = "2px";
-  del.style.background = "red";
-  del.style.color = "white";
-  del.style.border = "none";
-  del.style.borderRadius = "50%";
-  del.style.width = "28px";
-  del.style.height = "28px";
-
-  del.onclick = e => {
+  del.className = "placed-del";
+  del.innerHTML = icon("x");
+  del.setAttribute("aria-label", `Remove ${data.name}`);
+  del.addEventListener("click", e => {
     e.stopPropagation();
-    placedMemes = placedMemes.filter(m => m.id !== data.id);
+    state.placed = state.placed.filter(p => p.id !== data.id);
     wrap.remove();
     saveUserData();
-  };
+  });
 
   wrap.append(img, del);
-  makeDraggable(wrap);
-
-  return { wrap, img };
+  enableDragAndTap(wrap, data);
+  document.body.appendChild(wrap);
 }
 
-// ========== DRAG ==========
-function makeDraggable(el) {
-  const start = e => {
-    if (dragging) return;
-    const p = e.touches ? e.touches[0] : e;
-    dragging = el;
-    offset.x = p.pageX - el.offsetLeft;
-    offset.y = p.pageY - el.offsetTop;
+// Drag to move; double-tap/double-click to hear the meme. One pointer-event path covers mouse and touch.
+function enableDragAndTap(wrap, data) {
+  let grab = null;
+  let moved = false;
+  let lastTap = 0;
+
+  wrap.addEventListener("pointerdown", e => {
+    if (e.target.closest(".placed-del")) return;
+    grab = { dx: e.pageX - wrap.offsetLeft, dy: e.pageY - wrap.offsetTop, sx: e.pageX, sy: e.pageY };
+    moved = false;
+    wrap.setPointerCapture(e.pointerId);
     e.preventDefault();
-  };
+  });
 
-  const move = e => {
-    if (dragging !== el) return;
-    const p = e.touches ? e.touches[0] : e;
-    el.style.left = p.pageX - offset.x + "px";
-    el.style.top = p.pageY - offset.y + "px";
-  };
+  wrap.addEventListener("pointermove", e => {
+    if (!grab) return;
+    if (Math.hypot(e.pageX - grab.sx, e.pageY - grab.sy) > 4) moved = true;
+    wrap.style.left = e.pageX - grab.dx + "px";
+    wrap.style.top = e.pageY - grab.dy + "px";
+  });
 
-  const end = () => {
-    if (dragging !== el) return;
-    const data = placedMemes.find(m => m.id === el.dataset.id);
-    if (data) {
-      data.x = parseInt(el.style.left);
-      data.y = parseInt(el.style.top);
+  wrap.addEventListener("pointerup", () => {
+    if (!grab) return;
+    grab = null;
+
+    if (moved) {
+      data.x = wrap.offsetLeft;
+      data.y = wrap.offsetTop;
       saveUserData();
+      return;
     }
-    dragging = null;
-  };
+    const now = Date.now();
+    if (now - lastTap < 300) playMemeSound(findMeme(data.name));
+    lastTap = now;
+  });
 
-  el.addEventListener("mousedown", start);
-  el.addEventListener("touchstart", start, { passive: false });
-  document.addEventListener("mousemove", move);
-  document.addEventListener("touchmove", move, { passive: false });
-  document.addEventListener("mouseup", end);
-  document.addEventListener("touchend", end);
+  wrap.addEventListener("pointercancel", () => { grab = null; });
 }
 
-function loadUserData(data) {
-  if (!data) {
-    inventory = {};
-    placedMemes = [];
-    stats = { ...DEFAULT_STATS, memes: {}, rarities: {} };
-    upgrades = { ...DEFAULT_UPGRADES };
-    usedCodes = {};
-    // Brand-new account: don't retroactively apply old broadcasts.
-    lastSeenMessageTs = Date.now();
-    lastSeenMemeTs = Date.now();
-  } else {
-    inventory = data.inventory || {};
-    placedMemes = data.placedMemes || [];
-    stats = data.stats || { ...DEFAULT_STATS };
-    upgrades = data.upgrades || { ...DEFAULT_UPGRADES };
-    usedCodes = data.usedCodes || {};
-    lastSeenMessageTs = data.lastSeenMessageTs || Date.now();
-    lastSeenMemeTs = data.lastSeenMemeTs || Date.now();
-  }
-
-  quickRollBtn.disabled = !upgrades.quickRollUnlocked;
-
-  updateInventory();
-  restorePlacedMemes();
-  updateStatsUI();
-  refreshUpgradesUI();
-  updateUpgradeButtons();
+function restorePlacedMemes() {
+  document.querySelectorAll(".placed-meme").forEach(el => el.remove());
+  state.placed.forEach(mountPlacedMeme);
 }
 
-// ========== LOGIN / SIGN UP ==========
-loginBtn.onclick = async () => {
-  const email = emailInput.value.trim().toLowerCase();
-  const password = passwordInput.value;
-  const username = usernameInput.value.trim();
+/* ============================================================
+   7. AUTH & ACCOUNT
+   ============================================================ */
 
-  if (!email || !password) {
-    alert("Email and password required");
-    return;
-  }
+const accountFields = {
+  username: $("usernameInput"),
+  email: $("emailInput"),
+  password: $("passwordInput"),
+};
+
+const freshRecord = username => ({
+  username,
+  inventory: {},
+  placedMemes: [],
+  stats: newStats(),
+  upgrades: newUpgrades(),
+  usedCodes: {},
+  lastSeenMessageTs: Date.now(),
+  lastSeenMemeTs: Date.now(),
+});
+
+const NO_ACCOUNT_CODES = ["auth/user-not-found", "auth/invalid-credential", "auth/invalid-login-credentials"];
+
+$("loginBtn").addEventListener("click", async () => {
+  const email = accountFields.email.value.trim().toLowerCase();
+  const password = accountFields.password.value;
+  const username = accountFields.username.value.trim();
+
+  if (!email || !password) { alert("Email and password required"); return; }
 
   try {
-    // TRY SIGN IN first
+    // Try signing in first; onAuthStateChanged does the rest.
     await signInWithEmailAndPassword(auth, email, password);
-    // onAuthStateChanged handles the rest — no page reload needed.
   } catch (signInErr) {
-    const noAccount = [
-      "auth/user-not-found",
-      "auth/invalid-credential",
-      "auth/invalid-login-credentials"
-    ].includes(signInErr.code);
-
-    if (!noAccount) {
-      alert(signInErr.message);
-      return;
-    }
-
-    // SIGN UP
-    if (!username) {
-      alert("Enter a username to create a new account");
-      return;
-    }
+    if (!NO_ACCOUNT_CODES.includes(signInErr.code)) { alert(signInErr.message); return; }
+    if (!username) { alert("Enter a username to create a new account"); return; }
 
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(cred.user, { displayName: username });
-
-      const initialData = {
-        username,
-        inventory: {},
-        placedMemes: [],
-        stats: { ...DEFAULT_STATS },
-        upgrades: { ...DEFAULT_UPGRADES },
-        usedCodes: {},
-        lastSeenMessageTs: Date.now(),
-        lastSeenMemeTs: Date.now()
-      };
-
-      await set(ref(db, "users/" + cred.user.uid), initialData);
-      // onAuthStateChanged fires automatically after sign-up.
+      await set(ref(db, "users/" + cred.user.uid), freshRecord(username));
     } catch (signUpErr) {
       alert(signUpErr.message);
     }
   }
-};
+});
 
-// ========== LOGOUT ==========
-logoutBtn.onclick = async () => {
+$("logoutBtn").addEventListener("click", () => signOut(auth).catch(console.error));
+
+$("deleteBtn").addEventListener("click", async () => {
+  if (!state.uid) return;
+  if (!confirm("Are you sure you want to reset your account? This will clear all your progress.")) return;
+
+  const fresh = freshRecord(state.username);
   try {
-    await signOut(auth);
-  } catch (err) {
-    console.error(err);
-  }
-};
-
-// ========== RESET ACCOUNT (clears cloud progress) ==========
-deleteBtn.onclick = async () => {
-  const confirmDelete = confirm("Are you sure you want to reset your account? This will clear all your progress.");
-  if (!confirmDelete) return;
-  if (!currentUserId) return;
-
-  const fresh = {
-    username: currentUser,
-    inventory: {},
-    placedMemes: [],
-    stats: { ...DEFAULT_STATS },
-    upgrades: { ...DEFAULT_UPGRADES },
-    usedCodes: {},
-    lastSeenMessageTs: Date.now(),
-    lastSeenMemeTs: Date.now()
-  };
-
-  try {
-    await set(ref(db, "users/" + currentUserId), fresh);
+    await set(ref(db, "users/" + state.uid), fresh);
     loadUserData(fresh);
     alert("Your account has been reset.");
   } catch (err) {
     console.error(err);
     alert("Failed to reset account.");
   }
-};
-
-// ========== UI RESET ON SIGN-OUT ==========
-function handleSignedOut() {
-  if (unsubscribeMessages) { unsubscribeMessages(); unsubscribeMessages = null; }
-  if (unsubscribeMemes) { unsubscribeMemes(); unsubscribeMemes = null; }
-
-  inventory = {};
-  placedMemes = [];
-  selectedMeme = null;
-  currentUser = null;
-  currentEmail = null;
-  currentUserId = null;
-  isAdmin = false;
-  stats = { ...DEFAULT_STATS };
-  upgrades = { ...DEFAULT_UPGRADES };
-  usedCodes = {};
-
-  document.querySelectorAll("[data-id]").forEach(e => e.remove());
-  inventoryEl.innerHTML = "";
-  updateStatsUI();
-
-  authForm.style.display = "block";
-  userInfo.style.display = "none";
-  adminToggleBtn.style.display = "none";
-  adminPanelWrapper.classList.remove("open");
-}
-
-function enableAdminPanel() {
-  const panel = document.getElementById("adminPanel");
-  const select = document.getElementById("adminMemeSelect");
-  const spawnBtn = document.getElementById("spawnMemeBtn");
-
-  panel.style.display = "block";
-
-  // fill dropdown
-  select.innerHTML = "";
-  memes.forEach(m => {
-    const opt = document.createElement("option");
-    opt.value = m.name;
-    opt.textContent = `${m.name} (${m.rarity})`;
-    select.appendChild(opt);
-  });
-
-  spawnBtn.onclick = () => {
-    const meme = memes.find(m => m.name === select.value);
-    if (!meme) return;
-
-    inventory[meme.name] = (inventory[meme.name] || 0) + 1;
-    updateInventory();
-    showFloatingText(`Spawned ${meme.name}!`, meme.color);
-  };
-}
-
-document.getElementById("redeemBtn").onclick = () => {
-  const code = document.getElementById("codeInput").value.trim().toUpperCase();
-  const status = document.getElementById("codeStatus");
-
-  if (!currentUserId) {
-    status.textContent = "❌ Please sign in first";
-    return;
-  }
-
-  if (!REDEEM_CODES[code]) {
-    status.textContent = "❌ Invalid code";
-    return;
-  }
-
-  if (usedCodes[code]) {
-    status.textContent = "⚠️ Code already used";
-    return;
-  }
-
-  const reward = REDEEM_CODES[code];
-  inventory[reward.meme] = (inventory[reward.meme] || 0) + reward.amount;
-
-  usedCodes[code] = true;
-
-  updateInventory();
-  status.textContent = `✅ Received ${reward.meme}!`;
-};
-
-function showFloatingText(message, color = "#fff") {
-  const text = document.createElement("div");
-  text.textContent = message;
-  text.style.position = "fixed";
-  text.style.top = "20px";
-  text.style.left = "50%";
-  text.style.transform = "translateX(-50%)";
-  text.style.padding = "10px 20px";
-  text.style.background = "rgba(0,0,0,0.7)";
-  text.style.color = color;
-  text.style.fontWeight = "bold";
-  text.style.fontSize = "16px";
-  text.style.borderRadius = "8px";
-  text.style.zIndex = "9999";
-  text.style.opacity = "0";
-  text.style.transition = "all 0.6s ease";
-
-  document.body.appendChild(text);
-
-  // Animate down & fade in
-  requestAnimationFrame(() => {
-    text.style.top = "50px";
-    text.style.opacity = "1";
-  });
-
-  // After 1s, animate up & fade out
-  setTimeout(() => {
-    text.style.top = "0px";
-    text.style.opacity = "0";
-    text.addEventListener("transitionend", () => text.remove());
-  }, 1000);
-}
-
-const quickRollBtn = document.getElementById("quickRollBtn");
-
-quickRollBtn.onclick = () => {
-  if (quickRollBtn.disabled) return;
-  quickRoll = !quickRoll;
-  quickRollBtn.textContent = quickRoll
-    ? "⚡ Quick Roll: ON"
-    : "⚡ Quick Roll: OFF";
-};
-
-const statsPanel = document.getElementById("statsPanel");
-const statsToggle = document.getElementById("statsToggle");
-
-statsToggle.addEventListener("click", () => {
-  statsPanel.classList.toggle("open");
 });
 
-const statsContent = document.getElementById("statsContent");
+onAuthStateChanged(auth, async user => {
+  if (!user) { handleSignedOut(); return; }
 
-function updateStatsUI() {
-  if (!statsContent) return;
+  state.uid = user.uid;
+  state.email = user.email;
+  state.isAdmin = ADMIN_EMAILS.includes(user.email);
 
-  let html = `<b>Total Rolls:</b> ${stats.totalRolls}<br><br>`;
-
-  html += "<b>Memes:</b><br>";
-  for (let m in stats.memes) {
-    html += `• ${m}: ${stats.memes[m]}<br>`;
+  let data = null;
+  try {
+    const snap = await get(ref(db, "users/" + state.uid));
+    data = snap.exists() ? snap.val() : null;
+  } catch (err) {
+    console.error("Failed to load user data:", err);
   }
 
-  html += "<br><b>Rarities:</b><br>";
-  for (let r in stats.rarities) {
-    html += `• ${r}: ${stats.rarities[r]}<br>`;
-  }
+  state.username = data?.username || user.displayName || "User";
 
-  statsContent.innerHTML = html;
+  authForm.hidden = true;
+  userInfo.hidden = false;
+  $("welcome").innerHTML = state.isAdmin
+    ? withIcon("crown", `ADMIN ${state.username}`)
+    : withIcon("user", `${state.username} [${state.uid}]`);
+
+  if (state.isAdmin) enableAdminTools();
+
+  loadUserData(data);
+  listenForGlobalUpdates();
+});
+
+function loadUserData(data) {
+  const now = Date.now();
+  state.inventory = data?.inventory || {};
+  state.placed = data?.placedMemes || [];
+  state.stats = { ...newStats(), ...(data?.stats || {}) };
+  state.stats.memes ||= {};
+  state.stats.rarities ||= {};
+  state.upgrades = { ...newUpgrades(), ...(data?.upgrades || {}) };
+  state.usedCodes = data?.usedCodes || {};
+  // New accounts shouldn't retroactively receive old broadcasts.
+  state.seenMessageTs = data?.lastSeenMessageTs || now;
+  state.seenMemeTs = data?.lastSeenMemeTs || now;
+
+  renderInventory();
+  renderUpgrades();
+  renderStats();
+  restorePlacedMemes();
 }
 
-function enableGlobalAdminPanel() {
-  const panel = document.getElementById("globalAdminPanel");
-  const messageInput = document.getElementById("globalMessageInput");
-  const sendBtn = document.getElementById("sendGlobalMessageBtn");
-  const memeSelect = document.getElementById("globalMemeSelect");
-  const giveBtn = document.getElementById("giveGlobalMemeBtn");
-  const status = document.getElementById("globalAdminStatus");
+function handleSignedOut() {
+  unsubscribeMessages?.(); unsubscribeMessages = null;
+  unsubscribeMemes?.(); unsubscribeMemes = null;
+  clearTimeout(saveTimer);
+  clearSelection();
 
-  panel.style.display = "block";
-
-  // Fill meme dropdown
-  memeSelect.innerHTML = "";
-  memes.forEach(m => {
-    const opt = document.createElement("option");
-    opt.value = m.name;
-    opt.textContent = `${m.name} (${m.rarity})`;
-    memeSelect.appendChild(opt);
+  Object.assign(state, {
+    uid: null, username: null, email: null, isAdmin: false,
+    inventory: {}, placed: [], stats: newStats(), upgrades: newUpgrades(), usedCodes: {},
   });
+  quickRoll = false;
+  quickRollBtn.innerHTML = `${icon("bolt")} Quick Roll: OFF`;
 
-  // Send global message
-  sendBtn.onclick = async () => {
+  restorePlacedMemes();
+  renderInventory();
+  renderUpgrades();
+  renderStats();
+
+  authForm.hidden = false;
+  userInfo.hidden = true;
+  $("adminToggleBtn").hidden = true;
+  $("adminPanelWrapper").classList.remove("open");
+}
+
+/* ============================================================
+   8. REDEEM CODES, ADMIN & BROADCASTS
+   ============================================================ */
+
+$("redeemBtn").addEventListener("click", () => {
+  const input = $("codeInput");
+  const status = $("codeStatus");
+  const code = input.value.trim().toUpperCase();
+  const reward = REDEEM_CODES[code];
+
+  if (!state.uid) return setStatus(status, "err", "Please sign in first");
+  if (!reward) return setStatus(status, "err", "Invalid code");
+  if (state.usedCodes[code]) return setStatus(status, "warn", "Code already used");
+
+  addMeme(reward.meme, reward.amount);
+  state.usedCodes[code] = true;
+  input.value = "";
+  updateInventory();
+  setStatus(status, "ok", `Received ${reward.meme}!`);
+});
+
+function fillMemeSelect(select) {
+  select.innerHTML = memes.map(m => `<option value="${esc(m.name)}">${esc(m.name)} (${m.rarity})</option>`).join("");
+}
+
+function enableAdminTools() {
+  $("adminToggleBtn").hidden = false;
+  $("adminPanel").style.display = "block";
+
+  const spawnSelect = $("adminMemeSelect");
+  const giveSelect = $("globalMemeSelect");
+  const messageInput = $("globalMessageInput");
+  const status = $("globalAdminStatus");
+  fillMemeSelect(spawnSelect);
+  fillMemeSelect(giveSelect);
+
+  $("spawnMemeBtn").onclick = () => {
+    const m = findMeme(spawnSelect.value);
+    if (!m) return;
+    addMeme(m.name);
+    updateInventory();
+    showFloatingText(withIcon("check", `Spawned ${m.name}!`), m.color);
+  };
+
+  $("sendGlobalMessageBtn").onclick = async () => {
     const message = messageInput.value.trim();
     if (!message) return;
     try {
-      await push(ref(db, "globalMessages"), {
-        message,
-        sender: currentEmail,
-        timestamp: Date.now()
-      });
-      status.textContent = "✅ Message sent globally!";
+      await push(ref(db, "globalMessages"), { message, sender: state.email, timestamp: Date.now() });
+      setStatus(status, "ok", "Message sent globally!");
       messageInput.value = "";
     } catch (err) {
       console.error(err);
-      status.textContent = "❌ Failed to send message.";
+      setStatus(status, "err", "Failed to send message.");
     }
   };
 
-  // Give meme to all users
-  giveBtn.onclick = async () => {
-    const memeName = memeSelect.value;
-    const meme = memes.find(m => m.name === memeName);
-    if (!meme) return;
-
+  $("giveGlobalMemeBtn").onclick = async () => {
+    const memeName = giveSelect.value;
+    if (!findMeme(memeName)) return;
     try {
-      await push(ref(db, "globalMemes"), {
-        memeName,
-        sender: currentEmail,
-        amount: 1,
-        timestamp: Date.now()
-      });
-      status.textContent = `✅ ${memeName} given to all users!`;
+      await push(ref(db, "globalMemes"), { memeName, sender: state.email, amount: 1, timestamp: Date.now() });
+      setStatus(status, "ok", `${memeName} given to all users!`);
     } catch (err) {
       console.error(err);
-      status.textContent = "❌ Failed to give meme globally.";
+      setStatus(status, "err", "Failed to give meme globally.");
     }
   };
 }
 
-function showGlobalMessage(text) {
-  let container = document.getElementById("globalMessageContainer");
-
-  // 🔧 Auto-create if missing
-  if (!container) {
-    container = document.createElement("div");
-    container.id = "globalMessageContainer";
-    document.body.appendChild(container);
-  }
-
-  const msg = document.createElement("div");
-  msg.className = "global-message";
-  msg.textContent = "🌐 " + text;
-
-  container.appendChild(msg);
-
-  setTimeout(() => {
-    msg.classList.add("fade-out");
-    msg.addEventListener("animationend", () => msg.remove());
-  }, 5000);
-}
-
-// ========== REALTIME GLOBAL BROADCASTS ==========
-// Replaces the old 5-second polling loop. Each listener only fires for
-// entries newer than the last one this account has already processed
-// (lastSeenMessageTs / lastSeenMemeTs), so messages are shown exactly once
-// and global memes are credited exactly once — fixing the old bug where
-// every 5-second poll re-showed every message and re-added every meme.
+// Realtime broadcasts. Each listener only sees entries newer than the last one this
+// account processed, so a message shows once and a global meme is credited once.
 function listenForGlobalUpdates() {
-  if (unsubscribeMessages) unsubscribeMessages();
-  if (unsubscribeMemes) unsubscribeMemes();
+  unsubscribeMessages?.();
+  unsubscribeMemes?.();
 
-  const messagesQuery = query(
-    ref(db, "globalMessages"),
-    orderByChild("timestamp"),
-    startAt(lastSeenMessageTs + 1)
-  );
-
-  unsubscribeMessages = onChildAdded(messagesQuery, snap => {
-    const msg = snap.val();
-    if (!msg) return;
-    showGlobalMessage(msg.message);
-    if (msg.timestamp > lastSeenMessageTs) {
-      lastSeenMessageTs = msg.timestamp;
-      saveUserData();
+  unsubscribeMessages = onChildAdded(
+    query(ref(db, "globalMessages"), orderByChild("timestamp"), startAt(state.seenMessageTs + 1)),
+    snap => {
+      const msg = snap.val();
+      if (!msg) return;
+      showGlobalMessage(msg.message);
+      if (msg.timestamp > state.seenMessageTs) {
+        state.seenMessageTs = msg.timestamp;
+        saveUserData();
+      }
     }
-  });
-
-  const memesQuery = query(
-    ref(db, "globalMemes"),
-    orderByChild("timestamp"),
-    startAt(lastSeenMemeTs + 1)
   );
 
-  unsubscribeMemes = onChildAdded(memesQuery, snap => {
-    const gm = snap.val();
-    if (!gm) return;
-    inventory[gm.memeName] = (inventory[gm.memeName] || 0) + gm.amount;
-    updateInventory();
-    showFloatingText(`🌐 Received ${gm.memeName}!`, "#4dff88");
-    if (gm.timestamp > lastSeenMemeTs) {
-      lastSeenMemeTs = gm.timestamp;
-      saveUserData();
+  unsubscribeMemes = onChildAdded(
+    query(ref(db, "globalMemes"), orderByChild("timestamp"), startAt(state.seenMemeTs + 1)),
+    snap => {
+      const gift = snap.val();
+      if (!gift || !findMeme(gift.memeName)) return;
+      addMeme(gift.memeName, gift.amount);
+      if (gift.timestamp > state.seenMemeTs) state.seenMemeTs = gift.timestamp;
+      updateInventory();
+      showFloatingText(withIcon("globe", `Received ${gift.memeName}!`), "#4dff88");
     }
-  });
-}
-
-const upgradeStatus = document.getElementById("upgradeStatus");
-const upgradeLuckBtn = document.getElementById("upgradeLuckBtn");
-const unlockQuickRollBtn = document.getElementById("unlockQuickRollBtn");
-const upgradeInventoryBtn = document.getElementById("upgradeInventoryBtn");
-
-// Upgrade Luck
-upgradeLuckBtn.onclick = () => {
-  if (upgrades.luck >= 10) return;
-
-  const eligible = memes.filter(m =>
-    ["Epic", "Legendary", "Secret"].includes(m.rarity)
   );
-
-  let total = 0;
-  eligible.forEach(m => total += inventory[m.name] || 0);
-
-  if (total < 2) {
-    upgradeStatus.textContent = "❌ Need 2 Epic+ memes";
-    return;
-  }
-
-  let consume = 2;
-  for (let m of eligible) {
-    const count = inventory[m.name] || 0;
-    const used = Math.min(count, consume);
-    inventory[m.name] -= used;
-    if (inventory[m.name] <= 0) delete inventory[m.name];
-    consume -= used;
-    if (consume <= 0) break;
-  }
-
-  upgrades.luck++;
-  upgradeStatus.textContent = `🍀 Luck upgraded → ${upgrades.luck}`;
-
-  updateInventory();
-  saveUserData();
-  refreshUpgradesUI();
-};
-
-unlockQuickRollBtn.onclick = () => {
-  if (upgrades.quickRollUnlocked) return;
-
-  if ((inventory["Gigachad"] || 0) < 1) {
-    upgradeStatus.textContent = "❌ Need 1 Gigachad";
-    return;
-  }
-
-  inventory["Gigachad"]--;
-  if (inventory["Gigachad"] <= 0) delete inventory["Gigachad"];
-
-  upgrades.quickRollUnlocked = true;
-  quickRollBtn.disabled = false;
-
-  upgradeStatus.textContent = "⚡ Quick Roll unlocked!";
-
-  updateInventory();
-  saveUserData();
-  refreshUpgradesUI();
-};
-
-upgradeInventoryBtn.onclick = () => {
-  if (upgrades.inventoryLimit >= 250) return;
-
-  if ((inventory["Pepe"] || 0) < 3) {
-    upgradeStatus.textContent = "❌ Need 3 Pepe";
-    return;
-  }
-
-  inventory["Pepe"] -= 3;
-  if (inventory["Pepe"] <= 0) delete inventory["Pepe"];
-
-  upgrades.inventoryLimit += 5;
-  upgradeStatus.textContent =
-    `📦 Inventory limit → ${upgrades.inventoryLimit}`;
-
-  updateInventory();
-  saveUserData();
-  refreshUpgradesUI();
-};
-
-// Quick Roll starts disabled until upgrades load in loadUserData()
-quickRollBtn.disabled = true;
-
-function updateUpgradeButtons() {
-  // Luck requires 2 Epic+
-  const epicPlusCount = memes
-    .filter(m => ["Epic", "Legendary", "Secret"].includes(m.rarity))
-    .reduce((s, m) => s + (inventory[m.name] || 0), 0);
-  upgradeLuckBtn.disabled = epicPlusCount < 2;
-
-  // Quick Roll requires 1 Gigachad and not already unlocked
-  unlockQuickRollBtn.disabled = (inventory["Gigachad"] || 0) < 1 || upgrades.quickRollUnlocked;
-
-  // Inventory upgrade requires 3 Pepe
-  upgradeInventoryBtn.disabled = (inventory["Pepe"] || 0) < 3;
 }
 
-function refreshUpgradesUI() {
-  // QUICK ROLL
-  unlockQuickRollBtn.style.display =
-    upgrades.quickRollUnlocked ? "none" : "block";
-  unlockQuickRollBtn.disabled =
-    upgrades.quickRollUnlocked || (inventory["Gigachad"] || 0) < 1;
+/* ============================================================
+   9. PANELS & BOOT
+   ============================================================ */
 
-  quickRollBtn.disabled = !upgrades.quickRollUnlocked;
+$("adminToggleBtn").addEventListener("click", () => $("adminPanelWrapper").classList.toggle("open"));
+$("statsToggle").addEventListener("click", () => $("statsPanel").classList.toggle("open"));
 
-  // LUCK
-  upgradeLuckBtn.style.display =
-    upgrades.luck >= 5 ? "none" : "block";
-
-  const epicPlusCount = memes
-    .filter(m => ["Epic", "Legendary", "Secret"].includes(m.rarity))
-    .reduce((s, m) => s + (inventory[m.name] || 0), 0);
-
-  upgradeLuckBtn.disabled = epicPlusCount < 2;
-
-  // INVENTORY LIMIT
-  upgradeInventoryBtn.style.display =
-    upgrades.inventoryLimit >= 100 ? "none" : "block";
-
-  upgradeInventoryBtn.disabled = (inventory["Pepe"] || 0) < 3;
-}
-
-function playStarReveal(meme) {
-  const overlay = document.getElementById("starOverlay");
-  const glow = document.getElementById("starGlow");
-  const star = document.getElementById("starReveal");
-
-  overlay.style.display = "flex";
-
-  // Reset stars
-  glow.style.animation = "none";
-  star.style.animation = "none";
-  glow.style.transform = "scale(0.2) rotate(0deg)";
-  star.style.transform = "scale(0.2) rotate(0deg)";
-  void glow.offsetWidth; // force reflow
-
-  // Start animation
-  glow.style.animation = "starGrowSpin 7.5s linear forwards";
-  star.style.animation = "starGrowSpin 7.5s linear forwards";
-
-  // Flash + reveal meme near end
-  setTimeout(() => {
-    screenFlash();
-    revealMemeAfterStar(meme);
-  }, 7300);
-
-  // Remove overlay after animation
-  star.onanimationend = () => {
-    glow.style.animation = "none";
-    star.style.animation = "none";
-    glow.style.transform = "scale(0.2) rotate(0deg)";
-    star.style.transform = "scale(0.2) rotate(0deg)";
-    overlay.style.display = "none";
-  };
-}
-
-function revealMemeAfterStar(meme) {
-  memeImg.src = meme.img;
-  result.textContent = meme.name;
-  result.style.color = meme.color;
-  rarityEl.textContent = meme.rarity;
-
-  if (meme.sound) {
-    const a = new Audio(meme.sound);
-    a.volume = 0.9;
-    playSound(a); // ✅ plays once
-  }
-}
-
-document.addEventListener("keydown", e => {
-  if (e.key !== "=") return;
-  if (!isAdmin) return;
-
-  const pool = memes.filter(m =>
-    ["Epic", "Legendary", "Secret"].includes(m.rarity)
-  );
-
-  const meme = pool[Math.floor(Math.random() * pool.length)];
-
-  playStarReveal(meme);
+$("upgradeToggle").addEventListener("click", () => {
+  const closed = $("upgradeWrapper").classList.toggle("closed");
+  $("upgradeToggle").textContent = closed ? ">" : "<";
 });
 
-const upgradeWrapper = document.getElementById("upgradeWrapper");
-const upgradeToggle = document.getElementById("upgradeToggle");
+// Keyboard access for the div-based controls
+for (const id of ["rngButton", "statsToggle"]) {
+  $(id).addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $(id).click(); }
+  });
+}
 
-let upgradesOpen = true;
-
-upgradeToggle.onclick = () => {
-  upgradesOpen = !upgradesOpen;
-  upgradeWrapper.classList.toggle("closed", !upgradesOpen);
-  upgradeToggle.textContent = upgradesOpen ? "<" : ">";
-};
+renderUpgrades();
+renderStats();
