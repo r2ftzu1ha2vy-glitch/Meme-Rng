@@ -38,6 +38,17 @@ const ROLL_STEPS = 18;         // how many frames the roll animation shows
 const MAX_LUCK = 10;
 const LUCK_PER_LEVEL = 0.1;    // +10% weight on lucky rarities per level
 const MAX_INVENTORY = 250;
+
+// Upgrade tuning
+const MIN_COOLDOWN_MS = 1500;
+const COOLDOWN_STEP_MS = 300;      // faster cooldown: -300ms per level
+const MAX_COOLDOWN_LEVEL = 8;
+const DOUBLE_PER_LEVEL = 0.05;     // +5% chance of a double drop per level
+const MAX_DOUBLE_LEVEL = 10;
+const MAGNET_PER_LEVEL = 0.1;      // +10% weight on Mythic per level
+const MAX_MAGNET_LEVEL = 5;
+const BACKPACK_SLOTS = 25;
+const AUTO_STOP_RARITIES = ["Legendary", "Secret"]; // auto roll stops so you see these
 const MEME_SIZE = 100;         // px, placed memes
 
 const SOUND_BASE = "./"; // mp3 files ship next to index.html
@@ -94,7 +105,10 @@ const findMeme = name => memes.find(m => m.name === name);
 
 // Factories (not shared objects) so a reset or new login can never inherit old nested data.
 const newStats = () => ({ totalRolls: 0, memes: {}, rarities: {} });
-const newUpgrades = () => ({ luck: 0, quickRollUnlocked: false, inventoryLimit: 50 });
+const newUpgrades = () => ({
+  luck: 0, quickRollUnlocked: false, inventoryLimit: 50,
+  cooldown: 0, doubleDrop: 0, magnet: 0, autoRollUnlocked: false,
+});
 
 const state = {
   uid: null,
@@ -113,6 +127,8 @@ const state = {
 let cooling = false;      // roll cooldown running
 let revealing = false;    // Secret star animation running
 let quickRoll = false;
+let autoRoll = false;
+let animating = false;    // roll animation running
 let selectedMeme = null;
 let previewImg = null;
 let pointer = { x: 0, y: 0 };
@@ -143,6 +159,7 @@ const luckyOwned = () => memes
 // DOM
 const rngButton = $("rngButton");
 const quickRollBtn = $("quickRollBtn");
+const autoRollBtn = $("autoRollBtn");
 const memeImg = $("memeImg");
 const resultEl = $("result");
 const rarityLabel = $("rarityLabel");
@@ -243,8 +260,11 @@ function showGlobalMessage(text) {
    ============================================================ */
 
 function pickMeme() {
-  const boost = 1 + state.upgrades.luck * LUCK_PER_LEVEL;
-  const weights = memes.map(m => m.chance * (LUCKY_RARITIES.includes(m.rarity) ? boost : 1));
+  const { luck, magnet } = state.upgrades;
+  const luckBoost = 1 + luck * LUCK_PER_LEVEL;
+  const magnetBoost = 1 + magnet * MAGNET_PER_LEVEL;
+  const weights = memes.map(m => m.chance * (
+    LUCKY_RARITIES.includes(m.rarity) ? luckBoost : m.rarity === "Mythic" ? magnetBoost : 1));
   let r = Math.random() * weights.reduce((a, b) => a + b, 0);
 
   for (let i = 0; i < memes.length; i++) {
@@ -261,26 +281,31 @@ function displayMeme(m) {
   rarityLabel.textContent = m.rarity;
 }
 
-const isLocked = () => cooling || revealing;
+const isLocked = () => cooling || revealing || animating;
+const cooldownMs = () => Math.max(MIN_COOLDOWN_MS, COOLDOWN_MS - state.upgrades.cooldown * COOLDOWN_STEP_MS);
 const syncRollButton = () => rngButton.classList.toggle("disabled", isLocked());
 
 function startCooldown() {
+  const ms = cooldownMs();
   cooling = true;
   syncRollButton();
 
   cooldownFill.style.transition = "none";
   cooldownFill.style.width = "100%";
   void cooldownFill.offsetWidth; // flush styles so the transition below starts from 100%
-  cooldownFill.style.transition = `width ${COOLDOWN_MS}ms linear`;
+  cooldownFill.style.transition = `width ${ms}ms linear`;
   cooldownFill.style.width = "0%";
 
-  setTimeout(() => { cooling = false; syncRollButton(); }, COOLDOWN_MS);
+  setTimeout(() => { cooling = false; syncRollButton(); }, ms);
 }
 
 function runRollAnimation(finalMeme) {
-  let delay = 50;       // start fast…
-  const maxDelay = 380; // …and ease out slowly
+  // The animation scales with the cooldown so a faster cooldown never overlaps a running roll.
+  const scale = cooldownMs() / COOLDOWN_MS;
+  let delay = 50 * scale;       // start fast…
+  const maxDelay = 380 * scale; // …and ease out slowly
   let step = 0;
+  animating = true;
 
   (function tick() {
     displayMeme(memes[Math.floor(Math.random() * memes.length)]);
@@ -297,6 +322,7 @@ function runRollAnimation(finalMeme) {
 
 function finishRoll(m) {
   const { stats } = state;
+  animating = false;
   stats.totalRolls++;
   stats.memes[m.name] = (stats.memes[m.name] || 0) + 1;
   stats.rarities[m.rarity] = (stats.rarities[m.rarity] || 0) + 1;
@@ -306,11 +332,20 @@ function finishRoll(m) {
   rollLoop.playbackRate = 1.4;
   playSound(rollEnd);
 
-  if (inventoryCount() + 1 > state.upgrades.inventoryLimit) {
+  const space = state.upgrades.inventoryLimit - inventoryCount();
+  if (space <= 0) {
     showFloatingText(withIcon("box", "Inventory full — meme discarded!"), "#ff757c");
+    if (autoRoll) setAutoRoll(false, "Auto Roll stopped: inventory full");
   } else {
-    addMeme(m.name);
+    const wanted = Math.random() < state.upgrades.doubleDrop * DOUBLE_PER_LEVEL ? 2 : 1;
+    const gained = Math.min(wanted, space);
+    addMeme(m.name, gained);
     renderInventory();
+    if (gained === 2) showFloatingText(withIcon("dice", `Double drop: ${m.name} x2!`), m.color);
+  }
+
+  if (autoRoll && AUTO_STOP_RARITIES.includes(m.rarity)) {
+    setAutoRoll(false, `Auto Roll stopped: ${m.rarity}!`);
   }
 
   if (["Epic", "Legendary"].includes(m.rarity)) screenFlash();
@@ -323,6 +358,7 @@ function finishRoll(m) {
   }
 
   renderStats();
+  renderUpgrades();
   saveUserData();
 }
 
@@ -367,9 +403,9 @@ function playStarReveal(m) {
   timers.push(setTimeout(show, STAR_MS - 200), setTimeout(finish, STAR_MS));
 }
 
-rngButton.addEventListener("click", () => {
-  if (isLocked()) return;
-  if (!state.uid) { alert("Please sign in first!"); return; }
+// One roll. Returns false when locked or signed out.
+function rollOnce() {
+  if (isLocked() || !state.uid) return false;
 
   startCooldown();
   const result = pickMeme();
@@ -380,6 +416,13 @@ rngButton.addEventListener("click", () => {
     playSound(rollLoop);
     runRollAnimation(result);
   }
+  return true;
+}
+
+rngButton.addEventListener("click", () => {
+  if (isLocked()) return;
+  if (!state.uid) { alert("Please sign in first!"); return; }
+  rollOnce();
 });
 
 quickRollBtn.addEventListener("click", () => {
@@ -387,6 +430,20 @@ quickRollBtn.addEventListener("click", () => {
   quickRoll = !quickRoll;
   quickRollBtn.innerHTML = `${icon("bolt")} Quick Roll: ${quickRoll ? "ON" : "OFF"}`;
 });
+
+function setAutoRoll(on, reason) {
+  autoRoll = on;
+  autoRollBtn.innerHTML = `${icon("gear")} Auto Roll: ${autoRoll ? "ON" : "OFF"}`;
+  if (reason) showFloatingText(withIcon("warn", reason), "#ffae00");
+}
+
+autoRollBtn.addEventListener("click", () => {
+  if (autoRollBtn.disabled) return;
+  setAutoRoll(!autoRoll);
+});
+
+// Auto roll: fire whenever the roll button is free.
+setInterval(() => { if (autoRoll && state.uid) rollOnce(); }, 250);
 
 /* ============================================================
    5. INVENTORY & UPGRADES
@@ -432,8 +489,17 @@ function updateInventory() {
 const upgradeStatus = $("upgradeStatus");
 
 function spendLucky(amount) {
+  spendRarity(LUCKY_RARITIES, amount);
+}
+
+const rarityOwned = list => memes
+  .filter(m => list.includes(m.rarity))
+  .reduce((sum, m) => sum + countOf(m.name), 0);
+
+// Spends from the lowest rarity in the list first (memes[] is ordered common -> secret).
+function spendRarity(list, amount) {
   let remaining = amount;
-  for (const m of memes.filter(x => LUCKY_RARITIES.includes(x.rarity))) {
+  for (const m of memes.filter(x => list.includes(x.rarity))) {
     const used = Math.min(countOf(m.name), remaining);
     if (used) removeMeme(m.name, used);
     remaining -= used;
@@ -441,12 +507,18 @@ function spendLucky(amount) {
   }
 }
 
+// Scaling costs
+const cooldownCost = () => 3 + 2 * state.upgrades.cooldown;                 // Common
+const doubleCost = () => 1 + Math.floor(state.upgrades.doubleDrop / 5);     // Mythic
+const magnetCost = () => 4 + 2 * state.upgrades.magnet;                     // Uncommon
+
 const upgradeDefs = [
   {
     el: $("upgradeLuckBtn"),
+    label: () => `Luck ${state.upgrades.luck}/${MAX_LUCK} (2 Epic+ memes)`,
     maxed: () => state.upgrades.luck >= MAX_LUCK,
     canBuy: () => luckyOwned() >= 2,
-    failText: "Need 2 Epic+ memes",
+    fail: () => "Need 2 Epic+ memes",
     buy() {
       spendLucky(2);
       state.upgrades.luck++;
@@ -455,9 +527,10 @@ const upgradeDefs = [
   },
   {
     el: $("unlockQuickRollBtn"),
+    label: () => "Unlock Quick Roll (Gigachad x1)",
     maxed: () => state.upgrades.quickRollUnlocked,
     canBuy: () => countOf("Gigachad") >= 1,
-    failText: "Need 1 Gigachad",
+    fail: () => "Need 1 Gigachad",
     buy() {
       removeMeme("Gigachad");
       state.upgrades.quickRollUnlocked = true;
@@ -466,33 +539,95 @@ const upgradeDefs = [
   },
   {
     el: $("upgradeInventoryBtn"),
+    label: () => "Inventory +5 (Pepe x3)",
     maxed: () => state.upgrades.inventoryLimit >= MAX_INVENTORY,
     canBuy: () => countOf("Pepe") >= 3,
-    failText: "Need 3 Pepe",
+    fail: () => "Need 3 Pepe",
     buy() {
       removeMeme("Pepe", 3);
-      state.upgrades.inventoryLimit += 5;
+      state.upgrades.inventoryLimit = Math.min(MAX_INVENTORY, state.upgrades.inventoryLimit + 5);
       return ["box", `Inventory limit → ${state.upgrades.inventoryLimit}`, ""];
+    },
+  },
+  {
+    el: $("upgradeBackpackBtn"),
+    label: () => `Inventory +${BACKPACK_SLOTS} (2 Rare)`,
+    maxed: () => state.upgrades.inventoryLimit >= MAX_INVENTORY,
+    canBuy: () => rarityOwned(["Rare"]) >= 2,
+    fail: () => "Need 2 Rare memes",
+    buy() {
+      spendRarity(["Rare"], 2);
+      state.upgrades.inventoryLimit = Math.min(MAX_INVENTORY, state.upgrades.inventoryLimit + BACKPACK_SLOTS);
+      return ["box", `Inventory limit → ${state.upgrades.inventoryLimit}`, ""];
+    },
+  },
+  {
+    el: $("upgradeCooldownBtn"),
+    label: () => `Faster Cooldown ${state.upgrades.cooldown}/${MAX_COOLDOWN_LEVEL} (${cooldownCost()} Common)`,
+    maxed: () => state.upgrades.cooldown >= MAX_COOLDOWN_LEVEL,
+    canBuy: () => rarityOwned(["Common"]) >= cooldownCost(),
+    fail: () => `Need ${cooldownCost()} Common memes`,
+    buy() {
+      spendRarity(["Common"], cooldownCost());
+      state.upgrades.cooldown++;
+      return ["bolt", `Cooldown → ${(cooldownMs() / 1000).toFixed(1)}s`, "warn"];
+    },
+  },
+  {
+    el: $("upgradeDoubleBtn"),
+    label: () => `Double Drop ${Math.round(state.upgrades.doubleDrop * DOUBLE_PER_LEVEL * 100)}% (${doubleCost()} Mythic)`,
+    maxed: () => state.upgrades.doubleDrop >= MAX_DOUBLE_LEVEL,
+    canBuy: () => rarityOwned(["Mythic"]) >= doubleCost(),
+    fail: () => `Need ${doubleCost()} Mythic`,
+    buy() {
+      spendRarity(["Mythic"], doubleCost());
+      state.upgrades.doubleDrop++;
+      return ["dice", `Double drop chance → ${Math.round(state.upgrades.doubleDrop * DOUBLE_PER_LEVEL * 100)}%`, "ok"];
+    },
+  },
+  {
+    el: $("upgradeMagnetBtn"),
+    label: () => `Mythic Magnet ${state.upgrades.magnet}/${MAX_MAGNET_LEVEL} (${magnetCost()} Uncommon)`,
+    maxed: () => state.upgrades.magnet >= MAX_MAGNET_LEVEL,
+    canBuy: () => rarityOwned(["Uncommon"]) >= magnetCost(),
+    fail: () => `Need ${magnetCost()} Uncommon memes`,
+    buy() {
+      spendRarity(["Uncommon"], magnetCost());
+      state.upgrades.magnet++;
+      return ["crown", `Mythic Magnet → ${state.upgrades.magnet}`, "ok"];
+    },
+  },
+  {
+    el: $("unlockAutoRollBtn"),
+    label: () => "Unlock Auto Roll (1 Legendary)",
+    maxed: () => state.upgrades.autoRollUnlocked,
+    canBuy: () => rarityOwned(["Legendary"]) >= 1,
+    fail: () => "Need 1 Legendary",
+    buy() {
+      spendRarity(["Legendary"], 1);
+      state.upgrades.autoRollUnlocked = true;
+      return ["gear", "Auto Roll unlocked!", "warn"];
     },
   },
 ];
 
 upgradeDefs.forEach(def => def.el.addEventListener("click", () => {
   if (def.maxed()) return;
-  if (!def.canBuy()) { setStatus(upgradeStatus, "err", def.failText); return; }
+  if (!def.canBuy()) { setStatus(upgradeStatus, "err", def.fail()); return; }
 
   const [iconName, text, cls] = def.buy();
   upgradeStatus.innerHTML = withIcon(iconName, text, cls);
-  quickRollBtn.disabled = !state.upgrades.quickRollUnlocked;
   updateInventory();
 }));
 
 function renderUpgrades() {
   upgradeDefs.forEach(def => {
     def.el.style.display = def.maxed() ? "none" : "block";
+    def.el.textContent = def.label();
     def.el.disabled = def.maxed() || !def.canBuy();
   });
   quickRollBtn.disabled = !state.upgrades.quickRollUnlocked;
+  autoRollBtn.disabled = !state.upgrades.autoRollUnlocked;
 }
 
 function renderStats() {
@@ -787,6 +922,7 @@ function handleSignedOut() {
     uid: null, username: null, email: null, isAdmin: false,
     inventory: {}, placed: [], stats: newStats(), upgrades: newUpgrades(), usedCodes: {},
   });
+  setAutoRoll(false);
   quickRoll = false;
   quickRollBtn.innerHTML = `${icon("bolt")} Quick Roll: OFF`;
 
