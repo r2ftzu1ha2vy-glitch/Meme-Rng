@@ -51,7 +51,8 @@ body {
 }
 
 /* BUTTON AS TEXT */
-#quickRollBtn {
+#quickRollBtn,
+#autoRollBtn {
   cursor: pointer;
   display: inline-block;
   font-size: 10px;
@@ -66,7 +67,8 @@ body {
   user-select: none;
 }
 
-#quickRollBtn:hover {
+#quickRollBtn:hover,
+#autoRollBtn:hover {
   transform: scale(1.12);
   background: linear-gradient(90deg, #b84dff, #4da6ff);
   -webkit-background-clip: text;
@@ -74,7 +76,8 @@ body {
   text-shadow: 0 0 10px rgba(184, 77, 255, 0.7), 0 0 20px rgba(77, 166, 255, 0.7);
 }
 
-#quickRollBtn.disabled {
+#quickRollBtn.disabled,
+#autoRollBtn.disabled {
   pointer-events: none;
   opacity: 0.5;
   transform: none;
@@ -646,7 +649,8 @@ body {
 
 /* gradient-text buttons: text-fill can't colour SVG, so use the same gradient as a stroke */
 #rngButton .ico,
-#quickRollBtn .ico {
+#quickRollBtn .ico,
+#autoRollBtn .ico {
   stroke: url(#iconGrad);
 }
 
@@ -796,3 +800,6 @@ body { height: 100dvh; }
 #placedLayer.hidden { display: none; }
 .placed-meme { pointer-events: auto; }
 .meme-preview { position: fixed; }
+
+#quickRollBtn:disabled,
+#autoRollBtn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
