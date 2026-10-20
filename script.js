@@ -33,13 +33,14 @@ const db = getDatabase(app);
 
 const COOLDOWN_MS = 4000;
 const STAR_MS = 7500;          // length of the Secret reveal animation
+const STAR_SKIP_MS = 1500;     // click-to-skip unlocks after this long
 const ROLL_STEPS = 18;         // how many frames the roll animation shows
 const MAX_LUCK = 10;
 const LUCK_PER_LEVEL = 0.1;    // +10% weight on lucky rarities per level
 const MAX_INVENTORY = 250;
 const MEME_SIZE = 100;         // px, placed memes
 
-const SOUND_BASE = "https://raw.githubusercontent.com/r2ftzu1ha2vy-glitch/Meme-Rng/main/";
+const SOUND_BASE = "./"; // mp3 files ship next to index.html
 
 const ADMIN_EMAILS = [
   "r2ftzu1ha2vy@gmail.com",
@@ -188,12 +189,17 @@ function playSound(audio) {
   audio.play().catch(() => {}); // autoplay can be blocked until the first interaction
 }
 
-function playMemeSound(m) {
-  if (!m?.sound) return;
-  const audio = new Audio(m.sound);
-  audio.volume = 0.9;
-  playSound(audio);
+const audioCache = new Map();
+function audioFor(m) {
+  let a = audioCache.get(m.sound);
+  if (!a) { a = new Audio(m.sound); a.preload = "auto"; a.volume = 0.9; audioCache.set(m.sound, a); }
+  return a;
 }
+function playMemeSound(m) {
+  if (m?.sound) playSound(audioFor(m));
+}
+// Warm the cache on first interaction so reveals don't stall on a download.
+document.addEventListener("pointerdown", () => memes.forEach(audioFor), { once: true });
 
 function screenFlash() {
   flashEl.classList.add("flash");
@@ -331,18 +337,34 @@ function playStarReveal(m) {
   revealing = true;
   syncRollButton();
   overlay.style.display = "flex";
-
   resetParts();
   void overlay.offsetWidth;
   parts.forEach(p => { p.style.animation = `starGrowSpin ${STAR_MS}ms linear forwards`; });
 
-  setTimeout(() => { screenFlash(); displayMeme(m); playMemeSound(m); }, STAR_MS - 200);
-  setTimeout(() => {
+  let shown = false, done = false;
+  const startedAt = performance.now();
+  const timers = [];
+
+  const show = () => {
+    if (shown) return;
+    shown = true;
+    screenFlash(); displayMeme(m); playMemeSound(m);
+  };
+  const finish = () => {
+    if (done) return;
+    done = true;
+    timers.forEach(clearTimeout);
+    overlay.removeEventListener("click", onSkip);
+    show();
     resetParts();
     overlay.style.display = "none";
     revealing = false;
     syncRollButton();
-  }, STAR_MS);
+  };
+  const onSkip = () => { if (performance.now() - startedAt > STAR_SKIP_MS) finish(); };
+
+  overlay.addEventListener("click", onSkip);
+  timers.push(setTimeout(show, STAR_MS - 200), setTimeout(finish, STAR_MS));
 }
 
 rngButton.addEventListener("click", () => {
@@ -489,8 +511,23 @@ function renderStats() {
 
 // Clicks on these never place a meme.
 const NO_PLACE_SELECTOR =
-  "button, input, select, label, #rngButton, #statsToggle, #authBox, #statsPanel, " +
-  "#adminPanelWrapper, #redeemBox, #upgradeWrapper, .inv-item, .placed-meme";
+  "button, input, select, label, #rngButton, #dock, .drawer, #starOverlay, .inv-item, .placed-meme";
+
+// Placed memes live in their own fixed layer, positioned as viewport ratios.
+const placedLayer = document.createElement("div");
+placedLayer.id = "placedLayer";
+document.body.prepend(placedLayer);
+
+const clamp01 = v => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0));
+const spanX = () => Math.max(1, innerWidth - MEME_SIZE);
+const spanY = () => Math.max(1, innerHeight - MEME_SIZE);
+
+function setPlacedPos(wrap, data, xr, yr) {
+  data.xr = clamp01(xr);
+  data.yr = clamp01(yr);
+  wrap.style.left = `calc((100% - ${MEME_SIZE}px) * ${data.xr})`;
+  wrap.style.top = `calc((100% - ${MEME_SIZE}px) * ${data.yr})`;
+}
 
 function selectMeme(name) {
   const m = findMeme(name);
@@ -522,17 +559,17 @@ function movePreview() {
 }
 
 document.addEventListener("pointermove", e => {
-  pointer = { x: e.pageX, y: e.pageY };
+  pointer = { x: e.clientX, y: e.clientY };
   movePreview();
 });
 
 document.addEventListener("click", e => {
   if (!selectedMeme || e.target.closest(NO_PLACE_SELECTOR)) return;
-  placeSelectedMeme(e.pageX, e.pageY);
+  placeSelectedMeme(e.clientX, e.clientY);
 });
 
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") clearSelection();
+  if (e.key === "Escape") { clearSelection(); openPanel(null); }
 
   // Admin shortcut: preview the Secret reveal
   if (e.key === "=" && state.isAdmin && !revealing && !e.target.closest("input, select, textarea")) {
@@ -541,11 +578,13 @@ document.addEventListener("keydown", e => {
   }
 });
 
-function placeSelectedMeme(x, y) {
+function placeSelectedMeme(cx, cy) {
   const m = findMeme(selectedMeme);
   if (!m || !countOf(m.name)) { clearSelection(); return; }
 
-  const data = { id: crypto.randomUUID(), name: m.name, img: m.img, x: x - MEME_SIZE / 2, y: y - MEME_SIZE / 2 };
+  const data = { id: crypto.randomUUID(), name: m.name, img: m.img };
+  data.xr = clamp01((cx - MEME_SIZE / 2) / spanX());
+  data.yr = clamp01((cy - MEME_SIZE / 2) / spanY());
   state.placed.push(data);
   mountPlacedMeme(data);
 
@@ -555,11 +594,16 @@ function placeSelectedMeme(x, y) {
 }
 
 function mountPlacedMeme(data) {
+  if (data.xr == null) { // migrate old pixel-based saves
+    data.xr = clamp01((Number(data.x) || 0) / spanX());
+    data.yr = clamp01((Number(data.y) || 0) / spanY());
+    delete data.x; delete data.y;
+  }
+
   const wrap = document.createElement("div");
   wrap.className = "placed-meme";
   wrap.dataset.id = data.id;
-  wrap.style.left = data.x + "px";
-  wrap.style.top = data.y + "px";
+  setPlacedPos(wrap, data, data.xr, data.yr);
 
   const img = document.createElement("img");
   img.src = data.img;
@@ -579,7 +623,7 @@ function mountPlacedMeme(data) {
 
   wrap.append(img, del);
   enableDragAndTap(wrap, data);
-  document.body.appendChild(wrap);
+  placedLayer.appendChild(wrap);
 }
 
 // Drag to move; double-tap/double-click to hear the meme. One pointer-event path covers mouse and touch.
@@ -590,7 +634,8 @@ function enableDragAndTap(wrap, data) {
 
   wrap.addEventListener("pointerdown", e => {
     if (e.target.closest(".placed-del")) return;
-    grab = { dx: e.pageX - wrap.offsetLeft, dy: e.pageY - wrap.offsetTop, sx: e.pageX, sy: e.pageY };
+    const r = wrap.getBoundingClientRect();
+    grab = { gx: e.clientX - r.left, gy: e.clientY - r.top, sx: e.clientX, sy: e.clientY };
     moved = false;
     wrap.setPointerCapture(e.pointerId);
     e.preventDefault();
@@ -598,21 +643,14 @@ function enableDragAndTap(wrap, data) {
 
   wrap.addEventListener("pointermove", e => {
     if (!grab) return;
-    if (Math.hypot(e.pageX - grab.sx, e.pageY - grab.sy) > 4) moved = true;
-    wrap.style.left = e.pageX - grab.dx + "px";
-    wrap.style.top = e.pageY - grab.dy + "px";
+    if (Math.hypot(e.clientX - grab.sx, e.clientY - grab.sy) > 4) moved = true;
+    setPlacedPos(wrap, data, (e.clientX - grab.gx) / spanX(), (e.clientY - grab.gy) / spanY());
   });
 
   wrap.addEventListener("pointerup", () => {
     if (!grab) return;
     grab = null;
-
-    if (moved) {
-      data.x = wrap.offsetLeft;
-      data.y = wrap.offsetTop;
-      saveUserData();
-      return;
-    }
+    if (moved) { saveUserData(); return; }
     const now = Date.now();
     if (now - lastTap < 300) playMemeSound(findMeme(data.name));
     lastTap = now;
@@ -622,7 +660,7 @@ function enableDragAndTap(wrap, data) {
 }
 
 function restorePlacedMemes() {
-  document.querySelectorAll(".placed-meme").forEach(el => el.remove());
+  placedLayer.replaceChildren();
   state.placed.forEach(mountPlacedMeme);
 }
 
@@ -717,6 +755,7 @@ onAuthStateChanged(auth, async user => {
 
   loadUserData(data);
   listenForGlobalUpdates();
+  openPanel(null);
 });
 
 function loadUserData(data) {
@@ -760,6 +799,7 @@ function handleSignedOut() {
   userInfo.hidden = true;
   $("adminToggleBtn").hidden = true;
   $("adminPanelWrapper").classList.remove("open");
+  showPanel("authBox"); // signed out: surface the login drawer
 }
 
 /* ============================================================
@@ -868,20 +908,43 @@ function listenForGlobalUpdates() {
    9. PANELS & BOOT
    ============================================================ */
 
-$("adminToggleBtn").addEventListener("click", () => $("adminPanelWrapper").classList.toggle("open"));
-$("statsToggle").addEventListener("click", () => $("statsPanel").classList.toggle("open"));
+const PANELS = ["authBox", "redeemBox", "upgradePanel", "statsPanel", "adminPanelWrapper"];
+const dockButtons = [...document.querySelectorAll("#dock [data-panel]")];
+PANELS.forEach(id => $(id).classList.add("drawer"));
 
-$("upgradeToggle").addEventListener("click", () => {
-  const closed = $("upgradeWrapper").classList.toggle("closed");
-  $("upgradeToggle").textContent = closed ? ">" : "<";
+// Only one drawer is ever open; calling with the open panel's id closes it.
+function openPanel(id) {
+  const willOpen = !!id && !$(id).classList.contains("open");
+  PANELS.forEach(p => $(p).classList.toggle("open", willOpen && p === id));
+  dockButtons.forEach(b => b.classList.toggle("active", willOpen && b.dataset.panel === id));
+}
+const showPanel = id => { openPanel(null); openPanel(id); };
+
+dockButtons.forEach(b => b.addEventListener("click", e => {
+  e.stopPropagation();
+  openPanel(b.dataset.panel);
+}));
+document.addEventListener("click", e => {
+  if (!e.target.closest(".drawer, #dock")) openPanel(null);
 });
 
-// Keyboard access for the div-based controls
-for (const id of ["rngButton", "statsToggle"]) {
-  $(id).addEventListener("keydown", e => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $(id).click(); }
-  });
-}
+// Placed-meme layer cycles: behind UI -> arrange (above UI) -> hidden
+const LAYER_MODES = ["", "arrange", "hidden"];
+const LAYER_LABELS = { "": "Memes: behind UI", arrange: "Memes: arrange mode", hidden: "Memes: hidden" };
+let layerMode = 0;
+$("arrangeBtn").addEventListener("click", () => {
+  layerMode = (layerMode + 1) % LAYER_MODES.length;
+  const mode = LAYER_MODES[layerMode];
+  placedLayer.classList.toggle("arrange", mode === "arrange");
+  placedLayer.classList.toggle("hidden", mode === "hidden");
+  $("arrangeBtn").title = LAYER_LABELS[mode];
+  showFloatingText(esc(LAYER_LABELS[mode]));
+});
+
+// Keyboard access for the div-based roll button
+rngButton.addEventListener("keydown", e => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); rngButton.click(); }
+});
 
 renderUpgrades();
 renderStats();
