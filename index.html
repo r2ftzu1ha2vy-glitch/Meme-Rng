@@ -56,10 +56,6 @@
   </div>
   <button id="quickRollBtn" disabled><svg class="ico"><use href="#i-bolt"/></svg> Quick Roll: OFF</button>
 
-  <div id="statsToggle" role="button" tabindex="0" title="Stats" aria-label="Toggle stats">
-    <svg class="ico"><use href="#i-chart"/></svg>
-  </div>
-
   <div id="statsPanel">
     <h3><svg class="ico"><use href="#i-chart"/></svg> Stats</h3>
     <div id="statsContent"></div>
@@ -96,9 +92,6 @@
 </div>
 
 <div id="flash"></div>
-
-<!-- ADMIN BUTTON -->
-<button id="adminToggleBtn" hidden><svg class="ico"><use href="#i-gear"/></svg> Admin</button>
 
 <!-- ADMIN WRAPPER -->
 <div id="adminPanelWrapper">
@@ -144,16 +137,12 @@
 </div>
 
 <!-- UPGRADES -->
-<div id="upgradeWrapper">
-  <button id="upgradeToggle" class="upgrade-toggle" aria-label="Toggle upgrades">&lt;</button>
-
-  <div id="upgradePanel">
-    <h3>Upgrades</h3>
-    <button id="upgradeLuckBtn">Upgrade Luck (2 Epic+ memes)</button>
-    <button id="unlockQuickRollBtn">Unlock Quick Roll (Gigachad x1)</button>
-    <button id="upgradeInventoryBtn">Inventory +5 (Pepe x3)</button>
-    <div id="upgradeStatus"></div>
-  </div>
+<div id="upgradePanel">
+  <h3>Upgrades</h3>
+  <button id="upgradeLuckBtn">Upgrade Luck (2 Epic+ memes)</button>
+  <button id="unlockQuickRollBtn">Unlock Quick Roll (Gigachad x1)</button>
+  <button id="upgradeInventoryBtn">Inventory +5 (Pepe x3)</button>
+  <div id="upgradeStatus"></div>
 </div>
 
 <!-- STAR OVERLAY -->
@@ -163,6 +152,16 @@
 </div>
 
 <div id="globalMessageContainer"></div>
+
+<!-- DOCK: one drawer open at a time -->
+<nav id="dock" aria-label="Menu">
+  <button data-panel="authBox" title="Account" aria-label="Account"><svg class="ico"><use href="#i-user"/></svg></button>
+  <button data-panel="redeemBox" title="Redeem code" aria-label="Redeem code"><svg class="ico"><use href="#i-ticket"/></svg></button>
+  <button data-panel="upgradePanel" title="Upgrades" aria-label="Upgrades"><svg class="ico"><use href="#i-clover"/></svg></button>
+  <button data-panel="statsPanel" title="Stats" aria-label="Stats"><svg class="ico"><use href="#i-chart"/></svg></button>
+  <button id="arrangeBtn" title="Memes: behind UI" aria-label="Placed memes mode"><svg class="ico"><use href="#i-box"/></svg></button>
+  <button id="adminToggleBtn" data-panel="adminPanelWrapper" title="Admin" aria-label="Admin" hidden><svg class="ico"><use href="#i-gear"/></svg></button>
+</nav>
 
 <script type="module" src="script.js"></script>
 </body>
