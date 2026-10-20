@@ -106,15 +106,6 @@ body {
   transition: transform 0.2s ease;
 }
 
-.rolling {
-  animation: roll 0.12s infinite alternate;
-}
-
-@keyframes roll {
-  from { transform: scale(0.9); }
-  to { transform: scale(1.1); }
-}
-
 #result {
   font-size: 22px;
   margin-top: 8px;
@@ -158,10 +149,10 @@ body {
   position: fixed;
   top: 10px;
   left: 10px;
-  background: #222;           /* Dark background */
-  padding: 16px;              /* Some padding */
-  border-radius: 12px;        /* Rounded corners */
-  width: 240px;               /* Fixed width */
+  background: #111;
+  padding: 10px;
+  border-radius: 8px;
+  width: 220px;
   z-index: 2000;
   box-shadow: 0 4px 12px rgba(0,0,0,0.5); /* Soft shadow */
   font-family: Arial, sans-serif;
@@ -170,7 +161,7 @@ body {
 /* Input fields */
 #authBox input {
   width: 100%;
-  margin-bottom: 10px;
+  margin: 0 0 10px;
   padding: 8px;
   border-radius: 6px;
   border: none;
@@ -182,6 +173,15 @@ body {
 
 #authBox input::placeholder {
   color: #aaa;
+}
+
+#authBox #usernameInput,
+#authBox #emailInput {
+  margin-top: 6px;
+}
+
+#authBox #passwordInput {
+  margin-bottom: 6px;
 }
 
 /* Buttons */
@@ -204,7 +204,6 @@ body {
 
 /* User info (after login) */
 #userInfo {
-  display: none;
   text-align: center;
   margin-bottom: 8px;
 }
@@ -222,42 +221,12 @@ body {
 #userInfo button:hover {
   background: #d32f2f;
 }
-#verifyOverlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.9);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 99999;
-}
 
-.verifyBox {
-  background: #111;
-  padding: 25px;
-  width: 90%;
-  max-width: 320px;
-  border-radius: 12px;
-  text-align: center;
+#authBox #userInfo #deleteBtn,
+#authBox #userInfo #deleteBtn:hover {
+  margin-top: 6px;
+  background: #ff4d4d;
   color: white;
-}
-
-.verifyBox input {
-  width: 100%;
-  padding: 10px;
-  margin: 12px 0;
-  border-radius: 6px;
-  border: none;
-}
-
-.verifyBox button {
-  width: 100%;
-  padding: 10px;
-  background: #4caf50;
-  border: none;
-  border-radius: 6px;
-  font-weight: bold;
-  cursor: pointer;
 }
 .admin-panel {
   position: fixed;
@@ -625,43 +594,6 @@ body {
   min-height: 18px;
   text-align: center;
 }
-.rare-reveal {
-  position: fixed;
-  inset: 0;
-  background: radial-gradient(circle, rgba(0,0,0,0.85), black);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10000;
-  animation: fadeIn 0.3s ease;
-}
-
-.rare-reveal.hidden {
-  display: none;
-}
-
-#rareText {
-  font-size: 64px;
-  font-weight: 900;
-  letter-spacing: 4px;
-  text-align: center;
-  animation:
-    pulse 0.8s infinite alternate,
-    shake 0.15s infinite;
-}
-
-@keyframes pulse {
-  from { transform: scale(1); }
-  to   { transform: scale(1.08); }
-}
-
-@keyframes shake {
-  0% { transform: translate(0, 0); }
-  25% { transform: translate(2px, -2px); }
-  50% { transform: translate(-2px, 2px); }
-  75% { transform: translate(2px, 2px); }
-}
-
 /* Fullscreen black overlay */
 #starOverlay {
   position: fixed;
@@ -746,4 +678,121 @@ body {
 
 #upgradeWrapper.closed .upgrade-toggle {
   border-radius: 0 12px 12px 0;
+}
+
+/* ==================== ICONS ==================== */
+.sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.ico {
+  width: 1em;
+  height: 1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -0.15em;
+  flex: none;
+}
+
+/* gradient-text buttons: text-fill can't colour SVG, so use the same gradient as a stroke */
+#rngButton .ico,
+#quickRollBtn .ico {
+  stroke: url(#iconGrad);
+}
+
+.ico.ok { stroke: #4dff88; }
+.ico.err { stroke: #ff757c; }
+.ico.warn { stroke: #ffae00; }
+
+/* ==================== JS-BUILT ELEMENTS ==================== */
+#rarityLabel {
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.inv-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.inv-item span {
+  flex: 1;
+}
+
+.inv-item.selected {
+  background: #4caf50;
+}
+
+.inv-del {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 4px;
+  background: #ff4d4d;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.meme-preview {
+  position: absolute;
+  width: 100px;
+  pointer-events: none;
+  z-index: 999;
+  touch-action: none;
+}
+
+.placed-meme {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  z-index: 998;
+  touch-action: none;
+}
+
+.placed-meme img {
+  width: 100%;
+  height: 100%;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.placed-del {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: red;
+  color: white;
+  cursor: pointer;
+}
+
+.float-text {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 20px;
+  background: rgba(0, 0, 0, 0.7);
+  font-weight: bold;
+  font-size: 16px;
+  border-radius: 8px;
+  z-index: 9999;
+  opacity: 0;
+  transition: all 0.6s ease;
+  pointer-events: none;
 }
