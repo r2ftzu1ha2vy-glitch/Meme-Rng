@@ -99,7 +99,6 @@ const memes = [
   meme("Pepe", 25, "Uncommon", "https://iili.io/fpaN8cN.jpg", "el-pepe_hGUhiaM.mp3"),
   meme("Sus", 12.5, "Rare", "https://iili.io/fpYGUG9.webp", "53b1bab6-a8c3-4a1a-82db-7110ce1c29ef_6KNDGWD.mp3"),
   meme("Gigachad", 12.5, "Epic", "https://iili.io/fpYG6Yb.webp", "gigachad-theme-music-[AudioTrimmer.com].mp3"),
-  meme("Homer Drops His Donus", 12.5, "Epic", "https://iili.io/neMwEml.jpg", "homer-drops-his-donut-d-oh-[AudioTrimmer.com].mp3"),
   meme("Stick Bug", 12.5, "Epic", "https://iili.io/fykVLkG.webp", "bugged-[AudioTrimmer.com].mp3"),
   meme("Derpy Squarepants", 5, "Mythic", "https://iili.io/fy9OkJt.webp", "spongebob-boowomp.mp3"),
   meme("Bad Apple", 5, "Mythic", "https://iili.io/fyX9qkx.jpg", "bad-apple-[AudioTrimmer.com].mp3"),
