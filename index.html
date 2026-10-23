@@ -43,6 +43,8 @@
     </symbol>
     <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5z"/><path d="M4 19a2 2 0 0 1 2-2h13M9 8h6"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
     <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v5M12 18v.01"/></symbol>
   </defs>
@@ -56,6 +58,7 @@
   </div>
   <button id="quickRollBtn" disabled><svg class="ico"><use href="#i-bolt"/></svg> Quick Roll: OFF</button>
   <button id="autoRollBtn" disabled><svg class="ico"><use href="#i-gear"/></svg> Auto Roll: OFF</button>
+  <label class="stop-leg" for="stopLegendary"><input type="checkbox" id="stopLegendary" checked> Stop auto roll on Legendary <small>(Secret always stops)</small></label>
 
   <div id="statsPanel">
     <h3><svg class="ico"><use href="#i-chart"/></svg> Stats</h3>
@@ -103,6 +106,15 @@
       <option value="name">Name</option>
       <option value="count">Count</option>
     </select>
+    <button id="autoDiscardBtn" class="ad-toggle" type="button" title="Auto-discard" aria-label="Auto-discard settings" aria-expanded="false">
+      <svg class="ico"><use href="#i-trash"/></svg><span class="ad-badge" id="adBadge">0</span>
+    </button>
+  </div>
+  <div id="autoDiscardPanel" hidden>
+    <div class="ad-title">Auto-discard</div>
+    <div class="ad-sub">Rolled memes of the selected rarities are deleted instantly. Many upgrades are paid in memes, so keep what you need.</div>
+    <div id="adChips"></div>
+    <button id="adCleanBtn" type="button">Clean inventory now</button>
   </div>
   <div id="invFilters" class="inv-filters"></div>
   <div id="inventory"></div>
@@ -153,6 +165,13 @@
   <div id="codeStatus"></div>
 </div>
 
+<!-- COLLECTION -->
+<div id="collectionPanel">
+  <h3><svg class="ico"><use href="#i-book"/></svg> Collection <span id="colCount">0/0</span></h3>
+  <div class="col-bar"><i id="colFill"></i></div>
+  <div id="colGrid"></div>
+</div>
+
 <!-- UPGRADES -->
 <div id="upgradePanel">
   <h3>Upgrades</h3>
@@ -160,15 +179,18 @@
   <div id="upgradeStatus"></div>
 </div>
 
-<!-- SECRET REVEAL: card pack -->
+<!-- SECRET REVEAL -->
 <div id="starOverlay" data-phase="">
-  <div id="rays"></div>
-  <div id="starRing"></div>
-  <div id="stage">
-    <div id="pack">
-      <div id="packInner">
-        <div class="pack-face pack-back"><span>?</span></div>
-        <div class="pack-face pack-front">
+  <div id="starWorld">
+    <div id="starVignette"></div>
+    <div id="rays"></div>
+    <canvas id="starFx"></canvas>
+    <div id="starOrb"></div>
+    <div id="starRing"></div>
+    <div id="starRing2"></div>
+    <div id="stage">
+      <div id="secretCard">
+        <div class="card-tilt" id="cardTilt">
           <div class="sc-tag">SECRET</div>
           <div class="pf-img"><img id="starCardImg" src="" alt=""></div>
           <div id="starCardName"></div>
@@ -176,6 +198,7 @@
         </div>
       </div>
     </div>
+    <div id="starTitle">SECRET FOUND</div>
   </div>
   <div id="starFlash"></div>
   <div id="starHint">tap to continue</div>
@@ -188,6 +211,7 @@
   <button data-panel="authBox" title="Account" aria-label="Account"><svg class="ico"><use href="#i-user"/></svg></button>
   <button data-panel="redeemBox" title="Redeem code" aria-label="Redeem code"><svg class="ico"><use href="#i-ticket"/></svg></button>
   <button data-panel="upgradePanel" title="Upgrades" aria-label="Upgrades"><svg class="ico"><use href="#i-clover"/></svg></button>
+  <button data-panel="collectionPanel" title="Collection" aria-label="Collection"><svg class="ico"><use href="#i-book"/></svg></button>
   <button data-panel="statsPanel" title="Stats" aria-label="Stats"><svg class="ico"><use href="#i-chart"/></svg></button>
   <button id="arrangeBtn" title="Memes: behind UI" aria-label="Placed memes mode"><svg class="ico"><use href="#i-box"/></svg></button>
   <button id="adminToggleBtn" data-panel="adminPanelWrapper" title="Admin" aria-label="Admin" hidden><svg class="ico"><use href="#i-gear"/></svg></button>
