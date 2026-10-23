@@ -88,7 +88,23 @@
     <div id="result">Click to roll</div>
   </div>
 
-  <h2>Inventory</h2>
+  <div class="inv-head">
+    <h2>Inventory</h2>
+    <div class="inv-cap" id="invCap">
+      <span id="invCapText">0 / 50</span>
+      <div class="inv-cap-bar"><i id="invCapFill"></i></div>
+    </div>
+  </div>
+  <div class="inv-tools">
+    <input id="invSearch" type="search" placeholder="Search…" autocomplete="off" aria-label="Search inventory">
+    <select id="invSort" aria-label="Sort inventory">
+      <option value="rarity">Rarity ↓</option>
+      <option value="rarityAsc">Rarity ↑</option>
+      <option value="name">Name</option>
+      <option value="count">Count</option>
+    </select>
+  </div>
+  <div id="invFilters" class="inv-filters"></div>
   <div id="inventory"></div>
 </div>
 
@@ -144,18 +160,25 @@
   <div id="upgradeStatus"></div>
 </div>
 
-<!-- SECRET REVEAL CUTSCENE -->
+<!-- SECRET REVEAL: card pack -->
 <div id="starOverlay" data-phase="">
-  <canvas id="starCanvas"></canvas>
-  <div id="starHalo"><div id="starGlow"></div></div>
-  <div id="starCaption" aria-live="polite"></div>
-  <div id="starFlash"></div>
-  <div id="starCard">
-    <div class="sc-tag">SECRET</div>
-    <div class="sc-frame"><img id="starCardImg" src="" alt=""></div>
-    <div id="starCardName"></div>
-    <div class="sc-hint">tap to continue</div>
+  <div id="rays"></div>
+  <div id="starRing"></div>
+  <div id="stage">
+    <div id="pack">
+      <div id="packInner">
+        <div class="pack-face pack-back"><span>?</span></div>
+        <div class="pack-face pack-front">
+          <div class="sc-tag">SECRET</div>
+          <div class="pf-img"><img id="starCardImg" src="" alt=""></div>
+          <div id="starCardName"></div>
+          <div class="pf-sheen"></div>
+        </div>
+      </div>
+    </div>
   </div>
+  <div id="starFlash"></div>
+  <div id="starHint">tap to continue</div>
 </div>
 
 <div id="globalMessageContainer"></div>
