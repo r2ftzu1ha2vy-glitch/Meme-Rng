@@ -32,25 +32,38 @@ const auth = getAuth(app);
 const db = getDatabase(app);
 
 const COOLDOWN_MS = 4000;
-const REVEAL_CHARGE_MS = 2000; // Secret reveal: card shakes and charges
-const REVEAL_HOLD_MS = 4500;   // Secret reveal: card stays up before auto-close
+const REVEAL_CHARGE_MS = 2400; // Secret reveal: energy builds before the burst
+const REVEAL_HOLD_MS = 6500;   // Secret reveal: card stays up before auto-close
 const STAR_SKIP_MS = 600;      // click-to-skip unlocks after this long
 const UPGRADE_REFRESH_MS = 1000;
 const ROLL_STEPS = 18;         // how many frames the roll animation shows
-const MAX_LUCK = 10;
+const MAX_LUCK = 20;
 const LUCK_PER_LEVEL = 0.1;    // +10% weight on lucky rarities per level
-const MAX_INVENTORY = 250;
+const MAX_INVENTORY = 500;
 
 // Upgrade tuning
 const MIN_COOLDOWN_MS = 1500;
 const COOLDOWN_STEP_MS = 300;      // faster cooldown: -300ms per level
 const MAX_COOLDOWN_LEVEL = 8;
 const DOUBLE_PER_LEVEL = 0.05;     // +5% chance of a double drop per level
-const MAX_DOUBLE_LEVEL = 10;
+const MAX_DOUBLE_LEVEL = 15;
 const MAGNET_PER_LEVEL = 0.1;      // +10% weight on Mythic per level
-const MAX_MAGNET_LEVEL = 5;
+const MAX_MAGNET_LEVEL = 10;
 const BACKPACK_SLOTS = 25;
-const AUTO_STOP_RARITIES = ["Legendary", "Secret"]; // auto roll stops so you see these
+const RADAR_PER_LEVEL = 0.1;       // +10% weight on Rare per level
+const MAX_RADAR_LEVEL = 10;
+const SEEKER_PER_LEVEL = 0.25;     // +25% weight on Secret per level (stacks with Luck)
+const MAX_SEEKER_LEVEL = 8;
+const OVERCLOCK_STEP_MS = 150;     // shaves the cooldown below the normal floor
+const OVERCLOCK_FLOOR_MS = 900;
+const MAX_OVERCLOCK_LEVEL = 4;
+const PITY_BASE = 30;              // guaranteed Rare+ every N rolls...
+const PITY_STEP = 4;               // ...minus this per level
+const MAX_PITY_LEVEL = 5;
+const JACKPOT_PER_LEVEL = 0.02;    // chance of a triple drop
+const MAX_JACKPOT_LEVEL = 10;
+const FREE_PER_LEVEL = 0.03;       // chance a roll costs no cooldown
+const MAX_FREE_LEVEL = 10;
 const MEME_SIZE = 100;         // px, placed memes
 
 const SOUND_BASE = "./"; // mp3 files ship next to index.html
@@ -110,7 +123,9 @@ const newStats = () => ({ totalRolls: 0, memes: {}, rarities: {} });
 const newUpgrades = () => ({
   luck: 0, quickRollUnlocked: false, inventoryLimit: 50,
   cooldown: 0, doubleDrop: 0, magnet: 0, autoRollUnlocked: false,
+  radar: 0, seeker: 0, overclock: 0, pity: 0, pityCount: 0, jackpot: 0, freeRoll: 0,
 });
+const newSettings = () => ({ stopLegendary: true }); // auto roll always stops on Secret
 
 const state = {
   uid: null,
@@ -122,6 +137,8 @@ const state = {
   stats: newStats(),
   upgrades: newUpgrades(),
   usedCodes: {},
+  settings: newSettings(),
+  autoDiscard: {},    // { [rarity]: true } rolled memes of these rarities are deleted instantly
   seenMessageTs: 0,   // cursors so each broadcast is applied exactly once
   seenMemeTs: 0,
 };
@@ -185,6 +202,8 @@ function saveUserData() {
       stats: state.stats,
       upgrades: state.upgrades,
       usedCodes: state.usedCodes,
+      autoDiscard: state.autoDiscard,
+      settings: state.settings,
       lastSeenMessageTs: state.seenMessageTs,
       lastSeenMemeTs: state.seenMemeTs,
     }).catch(err => console.error("Failed to save user data:", err));
@@ -261,19 +280,31 @@ function showGlobalMessage(text) {
    4. ROLLING
    ============================================================ */
 
+const pityEvery = () => PITY_BASE - state.upgrades.pity * PITY_STEP;
+
+function oddsBoost(m) {
+  const u = state.upgrades;
+  let b = 1;
+  if (LUCKY_RARITIES.includes(m.rarity)) b *= 1 + u.luck * LUCK_PER_LEVEL;
+  if (m.rarity === "Mythic") b *= 1 + u.magnet * MAGNET_PER_LEVEL;
+  if (m.rarity === "Rare") b *= 1 + u.radar * RADAR_PER_LEVEL;
+  if (m.rarity === "Secret") b *= 1 + u.seeker * SEEKER_PER_LEVEL;
+  return b;
+}
+
 function pickMeme() {
-  const { luck, magnet } = state.upgrades;
-  const luckBoost = 1 + luck * LUCK_PER_LEVEL;
-  const magnetBoost = 1 + magnet * MAGNET_PER_LEVEL;
-  const weights = memes.map(m => m.chance * (
-    LUCKY_RARITIES.includes(m.rarity) ? luckBoost : m.rarity === "Mythic" ? magnetBoost : 1));
+  const u = state.upgrades;
+  // Pity timer: after enough misses, only Rare and above can drop.
+  const pity = u.pity > 0 && u.pityCount >= pityEvery() - 1;
+  const pool = pity ? memes.filter(m => rarityRank(m) >= RARITY_ORDER.indexOf("Rare")) : memes;
+  const weights = pool.map(m => m.chance * oddsBoost(m));
   let r = Math.random() * weights.reduce((a, b) => a + b, 0);
 
-  for (let i = 0; i < memes.length; i++) {
+  for (let i = 0; i < pool.length; i++) {
     r -= weights[i];
-    if (r <= 0) return memes[i];
+    if (r <= 0) return pool[i];
   }
-  return memes[memes.length - 1];
+  return pool[pool.length - 1];
 }
 
 function displayMeme(m) {
@@ -284,10 +315,20 @@ function displayMeme(m) {
 }
 
 const isLocked = () => cooling || revealing || animating;
-const cooldownMs = () => Math.max(MIN_COOLDOWN_MS, COOLDOWN_MS - state.upgrades.cooldown * COOLDOWN_STEP_MS);
+const cooldownFor = (cd, oc) =>
+  Math.max(OVERCLOCK_FLOOR_MS, Math.max(MIN_COOLDOWN_MS, COOLDOWN_MS - cd * COOLDOWN_STEP_MS) - oc * OVERCLOCK_STEP_MS);
+const cooldownMs = () => cooldownFor(state.upgrades.cooldown, state.upgrades.overclock);
 const syncRollButton = () => rngButton.classList.toggle("disabled", isLocked());
 
 function startCooldown() {
+  // Free Roll: this roll costs no cooldown.
+  if (Math.random() < state.upgrades.freeRoll * FREE_PER_LEVEL) {
+    cooling = false;
+    cooldownFill.style.transition = "none";
+    cooldownFill.style.width = "0%";
+    showFloatingText(withIcon("bolt", "Free roll!"), "#4da6ff");
+    return;
+  }
   const ms = cooldownMs();
   cooling = true;
   syncRollButton();
@@ -303,7 +344,7 @@ function startCooldown() {
 
 function runRollAnimation(finalMeme) {
   // The animation scales with the cooldown so a faster cooldown never overlaps a running roll.
-  const scale = cooldownMs() / COOLDOWN_MS;
+  const scale = Math.max(0.3, cooldownMs() / COOLDOWN_MS);
   let delay = 50 * scale;       // start fast…
   const maxDelay = 380 * scale; // …and ease out slowly
   let step = 0;
@@ -324,29 +365,39 @@ function runRollAnimation(finalMeme) {
 
 function finishRoll(m) {
   const { stats } = state;
+  const isNew = !isDiscovered(m.name);
   animating = false;
   stats.totalRolls++;
   stats.memes[m.name] = (stats.memes[m.name] || 0) + 1;
   stats.rarities[m.rarity] = (stats.rarities[m.rarity] || 0) + 1;
+  state.upgrades.pityCount = rarityRank(m) >= RARITY_ORDER.indexOf("Rare") ? 0 : (state.upgrades.pityCount || 0) + 1;
 
   rollLoop.pause();
   rollLoop.currentTime = 0;
   rollLoop.playbackRate = 1.4;
   playSound(rollEnd);
 
+  const discard = !!state.autoDiscard[m.rarity];
   const space = state.upgrades.inventoryLimit - inventoryCount();
-  if (space <= 0) {
+  if (discard) {
+    // Still counts as a roll (stats), but never touches the inventory.
+    showFloatingText(withIcon("trash", `Auto-discarded ${m.name}`), "#8d93a8");
+  } else if (space <= 0) {
     showFloatingText(withIcon("box", "Inventory full — meme discarded!"), "#ff757c");
     if (autoRoll) setAutoRoll(false, "Auto Roll stopped: inventory full");
   } else {
-    const wanted = Math.random() < state.upgrades.doubleDrop * DOUBLE_PER_LEVEL ? 2 : 1;
+    const { doubleDrop, jackpot } = state.upgrades;
+    const wanted = Math.random() < jackpot * JACKPOT_PER_LEVEL ? 3
+      : Math.random() < doubleDrop * DOUBLE_PER_LEVEL ? 2 : 1;
     const gained = Math.min(wanted, space);
     addMeme(m.name, gained);
     renderInventory();
-    if (gained === 2) showFloatingText(withIcon("dice", `Double drop: ${m.name} x2!`), m.color);
+    if (gained >= 2) showFloatingText(withIcon("dice", `${wanted === 3 ? "JACKPOT" : "Double drop"}: ${m.name} x${gained}!`), m.color);
   }
 
-  if (autoRoll && AUTO_STOP_RARITIES.includes(m.rarity)) {
+  // Secret always stops auto roll; Legendary only if the checkbox is on. Never for discarded rarities.
+  const stops = m.rarity === "Secret" || (m.rarity === "Legendary" && state.settings.stopLegendary);
+  if (autoRoll && !discard && stops) {
     setAutoRoll(false, `Auto Roll stopped: ${m.rarity}!`);
   }
 
@@ -359,21 +410,165 @@ function finishRoll(m) {
     playMemeSound(m);
   }
 
+  if (isNew) showFloatingText(withIcon("check", `New discovery: ${m.name}!`), "#4dff88");
   renderStats();
   renderUpgrades();
+  renderCollection();
   saveUserData();
 }
 
-// Secret reveal: a sealed card shakes and charges -> flash + flip -> holographic card.
-// Click during the charge (after STAR_SKIP_MS) flips immediately; click on the card closes it.
+/* ---------- Secret reveal: effects ---------- */
+
+const fx = { canvas: $("starFx"), ctx: null, parts: [], raf: 0, mode: "", last: 0, w: 0, h: 0, chargeAt: 0, chargeMs: 1 };
+const FX_COLORS = ["#ff004c", "#ffae00", "#4dff88", "#4da6ff", "#b84dff", "#ffffff"];
+const fxColor = () => FX_COLORS[Math.floor(Math.random() * FX_COLORS.length)];
+
+function fxResize() {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  fx.w = window.innerWidth; fx.h = window.innerHeight;
+  fx.canvas.width = fx.w * dpr; fx.canvas.height = fx.h * dpr;
+  fx.ctx = fx.canvas.getContext("2d");
+  fx.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function fxLoop(t) {
+  const { ctx } = fx;
+  const dt = Math.min(2.5, (t - fx.last) / 16.67 || 1);
+  fx.last = t;
+  const cx = fx.w / 2, cy = fx.h / 2;
+  ctx.clearRect(0, 0, fx.w, fx.h);
+
+  if (fx.mode === "charge") {
+    const p = Math.min(1, (t - fx.chargeAt) / fx.chargeMs);
+    $("starOverlay").style.setProperty("--k", (1 + p * 5).toFixed(2)); // shake grows with charge
+    const n = Math.floor((1 + p * 5) * dt + Math.random());
+    for (let i = 0; i < n; i++) {
+      fx.parts.push({
+        kind: "in", ang: Math.random() * Math.PI * 2,
+        r: Math.max(fx.w, fx.h) * (0.55 + Math.random() * 0.35),
+        v: 6 + Math.random() * 6, len: 16 + Math.random() * 40, w: 1 + Math.random() * 1.6, color: fxColor(),
+      });
+    }
+  } else if (fx.mode === "show" && Math.random() < 0.3 * dt) {
+    fx.parts.push({
+      kind: "spark", x: Math.random() * fx.w, y: fx.h + 10, vx: (Math.random() - 0.5) * 0.6,
+      vy: -(0.8 + Math.random() * 1.8), g: 0, life: 1, decay: 0.004 + Math.random() * 0.004,
+      size: 1 + Math.random() * 2.2, color: fxColor(),
+    });
+  }
+
+  ctx.globalCompositeOperation = "lighter";
+  for (const q of fx.parts) {
+    if (q.kind === "in") {
+      q.v *= 1 + 0.045 * dt;            // accelerate toward the core
+      q.r -= q.v * dt;
+      const x1 = cx + Math.cos(q.ang) * q.r, y1 = cy + Math.sin(q.ang) * q.r;
+      const x2 = cx + Math.cos(q.ang) * (q.r + q.len), y2 = cy + Math.sin(q.ang) * (q.r + q.len);
+      ctx.strokeStyle = q.color; ctx.globalAlpha = 0.85; ctx.lineWidth = q.w;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      q.dead = q.r < 8;
+    } else {
+      q.vy += q.g * dt;
+      q.x += q.vx * dt; q.y += q.vy * dt;
+      q.vx *= q.drag || 1;
+      q.life -= q.decay * dt;
+      ctx.globalAlpha = Math.max(0, q.life);
+      ctx.fillStyle = q.color;
+      ctx.beginPath(); ctx.arc(q.x, q.y, q.size, 0, Math.PI * 2); ctx.fill();
+      q.dead = q.life <= 0 || q.y > fx.h + 40;
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
+  fx.parts = fx.parts.filter(q => !q.dead);
+  fx.raf = requestAnimationFrame(fxLoop);
+}
+
+function fxStart(chargeMs) {
+  fxResize();
+  fx.parts = [];
+  fx.mode = "charge";
+  fx.chargeMs = chargeMs;
+  fx.chargeAt = performance.now();
+  fx.last = fx.chargeAt;
+  cancelAnimationFrame(fx.raf);
+  fx.raf = requestAnimationFrame(fxLoop);
+}
+
+function fxBurst() {
+  fx.parts = fx.parts.filter(q => q.kind !== "in");
+  fx.mode = "burst";
+  const cx = fx.w / 2, cy = fx.h / 2;
+  for (let i = 0; i < 220; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const sp = 2 + Math.pow(Math.random(), 1.6) * 18;
+    fx.parts.push({
+      kind: "spark", x: cx, y: cy, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
+      g: 0.13, drag: 0.985, life: 1, decay: 0.006 + Math.random() * 0.012,
+      size: 1.2 + Math.random() * 3.2, color: fxColor(),
+    });
+  }
+}
+
+function fxStop() {
+  cancelAnimationFrame(fx.raf);
+  fx.mode = "";
+  fx.parts = [];
+  fx.ctx?.clearRect(0, 0, fx.w, fx.h);
+}
+
+/* ---------- Secret reveal: synthesized sound (no audio files needed) ---------- */
+
+// Rising whoosh that peaks right as the charge ends. Returns a function that cuts it short.
+function riserSfx(ms) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = ctx.currentTime, d = ms / 1000;
+    const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(55, t);
+    o.frequency.exponentialRampToValueAtTime(880, t + d);
+    f.type = "lowpass";
+    f.frequency.setValueAtTime(180, t);
+    f.frequency.exponentialRampToValueAtTime(5200, t + d);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + d);
+    o.connect(f); f.connect(g); g.connect(ctx.destination);
+    o.start(t); o.stop(t + d + 0.1);
+    let closed = false;
+    return () => { if (closed) return; closed = true; ctx.close().catch(() => {}); };
+  } catch { return () => {}; }
+}
+
+function boomSfx() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(150, t);
+    o.frequency.exponentialRampToValueAtTime(28, t + 0.7);
+    g.gain.setValueAtTime(0.7, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t); o.stop(t + 0.85);
+    setTimeout(() => ctx.close().catch(() => {}), 1200);
+  } catch { /* audio unavailable */ }
+}
+
+// Secret reveal: blackout -> energy converges on a core (shake + riser) -> white burst + boom
+// -> the card slams in, tilts with your pointer, and sparkles drift up.
+// Click during the charge (after STAR_SKIP_MS) triggers the burst; click on the card closes it.
 function playStarReveal(m) {
   const overlay = $("starOverlay");
+  const tilt = $("cardTilt");
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const chargeMs = reduced ? 600 : REVEAL_CHARGE_MS;
 
   let phase = "charge";
   let closed = false;
-  let flipTimer = 0, settleTimer = 0, holdTimer = 0, flipAt = 0;
+  let burstTimer = 0, settleTimer = 0, holdTimer = 0, burstAt = 0;
+  let stopRiser = () => {};
   const startAt = performance.now();
 
   revealing = true;
@@ -382,47 +577,72 @@ function playStarReveal(m) {
   $("starCardImg").alt = m.name;
   $("starCardName").textContent = m.name;
   overlay.style.setProperty("--charge", chargeMs + "ms");
+  overlay.style.setProperty("--k", "1");
+  ["--rx", "--ry", "--mx", "--my"].forEach(p => tilt.style.removeProperty(p));
   overlay.classList.remove("closing");
   overlay.dataset.phase = "charge";
   overlay.classList.add("on");
 
-  const flip = () => {
+  if (!reduced) { fxStart(chargeMs); stopRiser = riserSfx(chargeMs); }
+
+  const burst = () => {
     if (phase !== "charge" || closed) return;
-    phase = "flip";
-    flipAt = performance.now();
-    clearTimeout(flipTimer);
-    overlay.dataset.phase = "flip";
+    phase = "burst";
+    burstAt = performance.now();
+    clearTimeout(burstTimer);
+    stopRiser();
+    boomSfx();
+    overlay.dataset.phase = "burst";
+    if (!reduced) fxBurst();
     displayMeme(m);
-    playMemeSound(m);
+    setTimeout(() => playMemeSound(m), 250); // let the boom land first
     settleTimer = setTimeout(() => {
-      if (!closed && phase === "flip") { phase = "show"; overlay.dataset.phase = "show"; }
-    }, 900);
+      if (closed || phase !== "burst") return;
+      phase = "show";
+      overlay.dataset.phase = "show";
+      if (!reduced) fx.mode = "show";
+    }, 1000);
     holdTimer = setTimeout(finish, REVEAL_HOLD_MS);
+  };
+
+  const onMove = e => {
+    if (phase === "charge") return;
+    const r = tilt.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+    const nx = Math.max(-1, Math.min(1, (px - 0.5) * 2)), ny = Math.max(-1, Math.min(1, (py - 0.5) * 2));
+    tilt.style.setProperty("--ry", (nx * 14).toFixed(1) + "deg");
+    tilt.style.setProperty("--rx", (-ny * 14).toFixed(1) + "deg");
+    tilt.style.setProperty("--mx", (px * 100).toFixed(0) + "%");
+    tilt.style.setProperty("--my", (py * 100).toFixed(0) + "%");
   };
 
   const finish = () => {
     if (closed) return;
-    if (phase === "charge") flip(); // make sure the meme is shown/heard before closing
+    if (phase === "charge") burst(); // make sure the meme is shown/heard before closing
     closed = true;
-    clearTimeout(flipTimer); clearTimeout(settleTimer); clearTimeout(holdTimer);
+    clearTimeout(burstTimer); clearTimeout(settleTimer); clearTimeout(holdTimer);
+    stopRiser();
     overlay.removeEventListener("click", onClick);
+    overlay.removeEventListener("pointermove", onMove);
     overlay.classList.add("closing");
     setTimeout(() => {
       overlay.classList.remove("on", "closing");
       overlay.dataset.phase = "";
+      fxStop();
       revealing = false;
       syncRollButton();
-    }, 350);
+    }, 420);
   };
 
   const onClick = () => {
     const now = performance.now();
-    if (phase === "charge") { if (now - startAt > STAR_SKIP_MS) flip(); }
-    else if (now - flipAt > 600) finish();
+    if (phase === "charge") { if (now - startAt > STAR_SKIP_MS) burst(); }
+    else if (now - burstAt > 900) finish();
   };
 
   overlay.addEventListener("click", onClick);
-  flipTimer = setTimeout(flip, chargeMs);
+  overlay.addEventListener("pointermove", onMove);
+  burstTimer = setTimeout(burst, chargeMs);
 }
 
 // One roll. Returns false when locked or signed out.
@@ -518,6 +738,62 @@ function buildInvFilters() {
 }
 buildInvFilters();
 
+/* ---------- Auto-discard: rolled memes of chosen rarities never enter the inventory ---------- */
+const adBtn = $("autoDiscardBtn");
+const adPanel = $("autoDiscardPanel");
+const adCleanBtn = $("adCleanBtn");
+const adChips = new Map();
+
+RARITY_ORDER.forEach(r => {
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "ad-chip";
+  chip.style.setProperty("--rc", accentOf({ rarity: r, color: RARITY_COLORS[r] }));
+  chip.innerHTML = `<i></i>${esc(r)}`;
+  chip.addEventListener("click", () => toggleAutoDiscard(r));
+  $("adChips").appendChild(chip);
+  adChips.set(r, chip);
+});
+
+function toggleAutoDiscard(rarity) {
+  const turningOn = !state.autoDiscard[rarity];
+  // Epic and above are hard to get back and some upgrades are paid in them, so ask first.
+  if (turningOn && rarityRank({ rarity }) >= RARITY_ORDER.indexOf("Epic")
+      && !confirm(`Auto-discard every ${rarity} you roll? They're rare, and some upgrades need them.`)) return;
+  if (turningOn) state.autoDiscard[rarity] = true; else delete state.autoDiscard[rarity];
+  renderAutoDiscard();
+  saveUserData();
+}
+
+const discardableCount = () => Object.entries(state.inventory)
+  .reduce((sum, [name, n]) => sum + (state.autoDiscard[findMeme(name)?.rarity] ? Number(n) || 0 : 0), 0);
+
+function renderAutoDiscard() {
+  const active = Object.keys(state.autoDiscard).filter(r => state.autoDiscard[r]);
+  for (const [r, chip] of adChips) chip.classList.toggle("on", !!state.autoDiscard[r]);
+  $("adBadge").textContent = active.length;
+  adBtn.classList.toggle("active", active.length > 0);
+  adBtn.title = active.length ? `Auto-discard: ${active.join(", ")}` : "Auto-discard";
+  const n = discardableCount();
+  adCleanBtn.disabled = n === 0;
+  adCleanBtn.textContent = n ? `Clean inventory now (${n})` : "Clean inventory now";
+}
+
+adBtn.addEventListener("click", () => {
+  adPanel.hidden = !adPanel.hidden;
+  adBtn.setAttribute("aria-expanded", String(!adPanel.hidden));
+});
+
+adCleanBtn.addEventListener("click", () => {
+  const victims = Object.entries(state.inventory).filter(([name]) => state.autoDiscard[findMeme(name)?.rarity]);
+  const total = victims.reduce((sum, [, n]) => sum + (Number(n) || 0), 0);
+  if (!total || !confirm(`Delete ${total} meme${total === 1 ? "" : "s"} matching your auto-discard rarities?`)) return;
+  victims.forEach(([name, n]) => removeMeme(name, n));
+  if (selectedMeme && !countOf(selectedMeme)) clearSelection();
+  updateInventory();
+  showFloatingText(withIcon("trash", `Discarded ${total} meme${total === 1 ? "" : "s"}`), "#8d93a8");
+});
+
 // Capacity bar + filter chip counts. Cheap, so it runs on every inventory render.
 function renderInvChrome(entries) {
   const total = inventoryCount();
@@ -540,6 +816,7 @@ function renderInvChrome(entries) {
     c.chip.classList.toggle("active", invView.filter === key);
     c.chip.classList.toggle("zero", n === 0 && key !== "all");
   }
+  renderAutoDiscard();
 }
 
 function renderInventory() {
@@ -621,6 +898,7 @@ $("invSort").addEventListener("change", e => {
 function updateInventory() {
   renderInventory();
   renderUpgrades();
+  renderCollection();
   saveUserData();
 }
 
@@ -658,7 +936,7 @@ const upgradeDefs = [
   {
     id: "cooldown", icon: "bolt", name: "Faster Cooldown",
     level: () => state.upgrades.cooldown, max: MAX_COOLDOWN_LEVEL,
-    desc: () => `${secs(cooldownMs())} → ${secs(nextCooldownMs())} between rolls`,
+    desc: () => `${secs(cooldownMs())} → ${secs(cooldownFor(state.upgrades.cooldown + 1, state.upgrades.overclock))} between rolls`,
     cost: () => ({ have: rarityOwned(["Common"]), need: cooldownCost(), what: "Common" }),
     buy() {
       spendRarity(["Common"], cooldownCost());
@@ -680,7 +958,7 @@ const upgradeDefs = [
   {
     id: "auto", icon: "gear", name: "Auto Roll",
     level: () => (state.upgrades.autoRollUnlocked ? 1 : 0), max: 1,
-    desc: () => "Rolls for you, stops on Legendary+",
+    desc: () => "Rolls for you, stops on Secret (and Legendary if enabled)",
     cost: () => ({ have: rarityOwned(["Legendary"]), need: 1, what: "Legendary" }),
     buy() {
       spendRarity(["Legendary"], 1);
@@ -719,6 +997,88 @@ const upgradeDefs = [
       spendRarity(["Mythic"], doubleCost());
       state.upgrades.doubleDrop++;
       return ["dice", `Double drop chance → ${pct(state.upgrades.doubleDrop * DOUBLE_PER_LEVEL)}%`, "ok"];
+    },
+  },
+  {
+    id: "radar", icon: "dice", name: "Rare Radar",
+    level: () => state.upgrades.radar, max: MAX_RADAR_LEVEL,
+    desc: () => `Rare odds +${pct(state.upgrades.radar * RADAR_PER_LEVEL)}% → +${pct((state.upgrades.radar + 1) * RADAR_PER_LEVEL)}%`,
+    cost: () => ({ have: rarityOwned(["Uncommon"]), need: 6 + 2 * state.upgrades.radar, what: "Uncommon" }),
+    buy() {
+      spendRarity(["Uncommon"], 6 + 2 * state.upgrades.radar);
+      state.upgrades.radar++;
+      return ["dice", `Rare Radar → ${state.upgrades.radar}`, "ok"];
+    },
+  },
+  {
+    id: "seeker", icon: "crown", name: "Secret Seeker",
+    level: () => state.upgrades.seeker, max: MAX_SEEKER_LEVEL,
+    desc: () => `Secret odds +${pct(state.upgrades.seeker * SEEKER_PER_LEVEL)}% → +${pct((state.upgrades.seeker + 1) * SEEKER_PER_LEVEL)}% (on top of Luck)`,
+    cost: () => ({ have: rarityOwned(["Legendary"]), need: 1 + Math.floor(state.upgrades.seeker / 3), what: "Legendary" }),
+    buy() {
+      spendRarity(["Legendary"], 1 + Math.floor(state.upgrades.seeker / 3));
+      state.upgrades.seeker++;
+      return ["crown", `Secret Seeker → ${state.upgrades.seeker}`, "ok"];
+    },
+  },
+  {
+    id: "overclock", icon: "bolt", name: "Overclock",
+    level: () => state.upgrades.overclock, max: MAX_OVERCLOCK_LEVEL,
+    desc: () => `${secs(cooldownMs())} → ${secs(cooldownFor(state.upgrades.cooldown, state.upgrades.overclock + 1))} between rolls`,
+    cost: () => ({ have: rarityOwned(["Mythic"]), need: 2 + state.upgrades.overclock, what: "Mythic" }),
+    buy() {
+      spendRarity(["Mythic"], 2 + state.upgrades.overclock);
+      state.upgrades.overclock++;
+      return ["bolt", `Overclock → ${secs(cooldownMs())}`, "warn"];
+    },
+  },
+  {
+    id: "pity", icon: "clover", name: "Pity Timer",
+    level: () => state.upgrades.pity, max: MAX_PITY_LEVEL,
+    desc: () => {
+      const next = PITY_BASE - (state.upgrades.pity + 1) * PITY_STEP;
+      return state.upgrades.pity
+        ? `Rare+ guaranteed every ${pityEvery()} rolls (${state.upgrades.pityCount}/${pityEvery() - 1}) → ${next}`
+        : `Guarantee a Rare+ every ${PITY_BASE - PITY_STEP} rolls`;
+    },
+    cost: () => ({ have: rarityOwned(["Rare"]), need: 2 + state.upgrades.pity, what: "Rare" }),
+    buy() {
+      spendRarity(["Rare"], 2 + state.upgrades.pity);
+      state.upgrades.pity++;
+      return ["clover", `Pity Timer → every ${pityEvery()} rolls`, "ok"];
+    },
+  },
+  {
+    id: "jackpot", icon: "dice", name: "Jackpot",
+    level: () => state.upgrades.jackpot, max: MAX_JACKPOT_LEVEL,
+    desc: () => `${pct(state.upgrades.jackpot * JACKPOT_PER_LEVEL)}% → ${pct((state.upgrades.jackpot + 1) * JACKPOT_PER_LEVEL)}% chance for 3 copies`,
+    cost: () => ({ have: rarityOwned(["Epic"]), need: 1 + Math.floor(state.upgrades.jackpot / 3), what: "Epic" }),
+    buy() {
+      spendRarity(["Epic"], 1 + Math.floor(state.upgrades.jackpot / 3));
+      state.upgrades.jackpot++;
+      return ["dice", `Jackpot chance → ${pct(state.upgrades.jackpot * JACKPOT_PER_LEVEL)}%`, "ok"];
+    },
+  },
+  {
+    id: "free", icon: "bolt", name: "Free Roll",
+    level: () => state.upgrades.freeRoll, max: MAX_FREE_LEVEL,
+    desc: () => `${pct(state.upgrades.freeRoll * FREE_PER_LEVEL)}% → ${pct((state.upgrades.freeRoll + 1) * FREE_PER_LEVEL)}% chance a roll has no cooldown`,
+    cost: () => ({ have: rarityOwned(["Common"]), need: 10 + 5 * state.upgrades.freeRoll, what: "Common" }),
+    buy() {
+      spendRarity(["Common"], 10 + 5 * state.upgrades.freeRoll);
+      state.upgrades.freeRoll++;
+      return ["bolt", `Free Roll → ${pct(state.upgrades.freeRoll * FREE_PER_LEVEL)}%`, "warn"];
+    },
+  },
+  {
+    id: "inv50", icon: "box", name: "Inventory +50",
+    level: () => state.upgrades.inventoryLimit, max: MAX_INVENTORY,
+    desc: () => `Limit ${state.upgrades.inventoryLimit} → ${Math.min(MAX_INVENTORY, state.upgrades.inventoryLimit + 50)}`,
+    cost: () => ({ have: rarityOwned(["Epic"]), need: 3, what: "Epic" }),
+    buy() {
+      spendRarity(["Epic"], 3);
+      state.upgrades.inventoryLimit = Math.min(MAX_INVENTORY, state.upgrades.inventoryLimit + 50);
+      return ["box", `Inventory limit → ${state.upgrades.inventoryLimit}`, ""];
     },
   },
   {
@@ -823,6 +1183,71 @@ function renderStats() {
     `<b>Memes:</b><br>${list(stats.memes)}` +
     `<br><b>Rarities:</b><br>${list(stats.rarities)}`;
 }
+
+/* ---------- Collection (dictionary) ---------- */
+
+const isDiscovered = name =>
+  (state.stats.memes[name] || 0) > 0 || countOf(name) > 0 || state.placed.some(p => p?.name === name);
+
+const TOTAL_CHANCE = memes.reduce((sum, m) => sum + m.chance, 0);
+let collectionKey = "";
+
+function renderCollection() {
+  const found = memes.filter(m => isDiscovered(m.name));
+  const key = memes.map(m => (isDiscovered(m.name) ? 1 : 0) + ":" + (state.stats.memes[m.name] || 0)).join("|");
+  setText($("colCount"), `${found.length}/${memes.length}`);
+  $("colFill").style.width = `${(found.length / memes.length) * 100}%`;
+  $("colFill").parentElement.classList.toggle("complete", found.length === memes.length);
+  if (key === collectionKey) return; // nothing changed: don't rebuild (and re-flash) the images
+  collectionKey = key;
+
+  const frag = document.createDocumentFragment();
+  for (const rarity of RARITY_ORDER) {
+    const group = memes.filter(m => m.rarity === rarity);
+    if (!group.length) continue;
+    const have = group.filter(m => isDiscovered(m.name)).length;
+
+    const head = document.createElement("div");
+    head.className = "col-head";
+    head.style.setProperty("--rc", accentOf(group[0]));
+    head.innerHTML = `<span>${esc(rarity)}</span><span>${have}/${group.length}</span>`;
+    frag.appendChild(head);
+
+    const grid = document.createElement("div");
+    grid.className = "col-grid";
+    for (const m of group) {
+      const got = isDiscovered(m.name);
+      const card = document.createElement("div");
+      card.className = "col-card" + (got ? "" : " locked");
+      card.style.setProperty("--rc", accentOf(m));
+      const odds = Math.round(TOTAL_CHANCE / m.chance);
+      card.title = got ? `${m.name} — click to hear it` : `Undiscovered ${rarity} — about 1 in ${odds} base odds`;
+
+      const img = document.createElement("img");
+      img.src = m.img; img.alt = ""; img.loading = "lazy"; img.draggable = false;
+      const name = document.createElement("div");
+      name.className = "col-name";
+      name.textContent = got ? m.name : "???";
+      const sub = document.createElement("div");
+      sub.className = "col-sub";
+      sub.textContent = got ? `rolled ×${state.stats.memes[m.name] || 0}` : `1 in ~${odds}`;
+      card.append(img, name, sub);
+      if (got) card.addEventListener("click", () => playMemeSound(m));
+      grid.appendChild(card);
+    }
+    frag.appendChild(grid);
+  }
+  $("colGrid").replaceChildren(frag);
+}
+
+/* ---------- Settings ---------- */
+
+const stopLegBox = $("stopLegendary");
+function syncSettingsUI() { stopLegBox.checked = !!state.settings.stopLegendary; }
+stopLegBox.addEventListener("change", () => {
+  state.settings.stopLegendary = stopLegBox.checked;
+  saveUserData();
+});
 
 /* ============================================================
    6. PLACED MEMES
@@ -1008,6 +1433,8 @@ const freshRecord = username => ({
   stats: newStats(),
   upgrades: newUpgrades(),
   usedCodes: {},
+  autoDiscard: {},
+  settings: newSettings(),
   lastSeenMessageTs: Date.now(),
   lastSeenMemeTs: Date.now(),
 });
@@ -1094,6 +1521,9 @@ function loadUserData(data) {
   state.stats.rarities ||= {};
   state.upgrades = { ...newUpgrades(), ...(data?.upgrades || {}) };
   state.usedCodes = data?.usedCodes || {};
+  state.autoDiscard = data?.autoDiscard || {};
+  state.settings = { ...newSettings(), ...(data?.settings || {}) };
+  syncSettingsUI();
   // New accounts shouldn't retroactively receive old broadcasts.
   state.seenMessageTs = data?.lastSeenMessageTs || now;
   state.seenMemeTs = data?.lastSeenMemeTs || now;
@@ -1101,6 +1531,8 @@ function loadUserData(data) {
   renderInventory();
   renderUpgrades();
   renderStats();
+  renderAutoDiscard();
+  renderCollection();
   restorePlacedMemes();
 }
 
@@ -1112,7 +1544,7 @@ function handleSignedOut() {
 
   Object.assign(state, {
     uid: null, username: null, email: null, isAdmin: false,
-    inventory: {}, placed: [], stats: newStats(), upgrades: newUpgrades(), usedCodes: {},
+    inventory: {}, placed: [], stats: newStats(), upgrades: newUpgrades(), usedCodes: {}, autoDiscard: {}, settings: newSettings(),
   });
   setAutoRoll(false);
   quickRoll = false;
@@ -1122,6 +1554,9 @@ function handleSignedOut() {
   renderInventory();
   renderUpgrades();
   renderStats();
+  renderAutoDiscard();
+  syncSettingsUI();
+  renderCollection();
 
   authForm.hidden = false;
   userInfo.hidden = true;
@@ -1236,7 +1671,7 @@ function listenForGlobalUpdates() {
    9. PANELS & BOOT
    ============================================================ */
 
-const PANELS = ["authBox", "redeemBox", "upgradePanel", "statsPanel", "adminPanelWrapper"];
+const PANELS = ["authBox", "redeemBox", "upgradePanel", "statsPanel", "collectionPanel", "adminPanelWrapper"];
 const dockButtons = [...document.querySelectorAll("#dock [data-panel]")];
 PANELS.forEach(id => $(id).classList.add("drawer"));
 
@@ -1246,6 +1681,7 @@ function openPanel(id) {
   PANELS.forEach(p => $(p).classList.toggle("open", willOpen && p === id));
   dockButtons.forEach(b => b.classList.toggle("active", willOpen && b.dataset.panel === id));
   if (willOpen && id === "upgradePanel") renderUpgrades();
+  if (willOpen && id === "collectionPanel") renderCollection();
 }
 const showPanel = id => { openPanel(null); openPanel(id); };
 
@@ -1277,3 +1713,4 @@ rngButton.addEventListener("keydown", e => {
 
 renderUpgrades();
 renderStats();
+renderCollection();
