@@ -32,8 +32,10 @@ const auth = getAuth(app);
 const db = getDatabase(app);
 
 const COOLDOWN_MS = 4000;
-const STAR_MS = 7500;          // length of the Secret reveal animation
-const STAR_SKIP_MS = 1500;     // click-to-skip unlocks after this long
+const REVEAL_BUILD_MS = 4200;  // Secret cutscene: star charges up
+const REVEAL_HOLD_MS = 5000;   // Secret cutscene: reveal card stays before auto-close
+const STAR_SKIP_MS = 1200;     // click-to-skip unlocks after this long
+const UPGRADE_REFRESH_MS = 1000;
 const ROLL_STEPS = 18;         // how many frames the roll animation shows
 const MAX_LUCK = 10;
 const LUCK_PER_LEVEL = 0.1;    // +10% weight on lucky rarities per level
@@ -362,45 +364,204 @@ function finishRoll(m) {
   saveUserData();
 }
 
+const REVEAL_CAPTIONS = ["something is stirring…", "it's getting closer…", "SECRET"];
+
+// Cutscene: hyperspace streaks + charging star -> white-out -> burst + reveal card.
+// Click during the build (after STAR_SKIP_MS) jumps to the reveal; click on the card closes it.
 function playStarReveal(m) {
   const overlay = $("starOverlay");
-  const parts = [$("starGlow"), $("starReveal")];
-  const resetParts = () => parts.forEach(p => {
-    p.style.animation = "none";
-    p.style.transform = "scale(0.2) rotate(0deg)";
+  const canvas = $("starCanvas");
+  const ctx = canvas.getContext("2d");
+  const halo = $("starHalo");
+  const caption = $("starCaption");
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const buildMs = reduced ? 1200 : REVEAL_BUILD_MS;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  let W = 0, H = 0, cx = 0, cy = 0, maxR = 1;
+  const resize = () => {
+    W = canvas.width = Math.round(innerWidth * dpr);
+    H = canvas.height = Math.round(innerHeight * dpr);
+    cx = W / 2; cy = H / 2; maxR = Math.hypot(cx, cy);
+  };
+  resize();
+  window.addEventListener("resize", resize);
+
+  const mkStar = anywhere => ({
+    a: Math.random() * Math.PI * 2,
+    r: anywhere ? Math.random() * maxR : Math.random() * 40 * dpr,
+    v: (30 + Math.random() * 90) * dpr,
+    hue: 190 + Math.random() * 130,
+    w: (0.6 + Math.random() * 1.4) * dpr,
   });
+  const stars = Array.from({ length: reduced ? 70 : 220 }, () => mkStar(true));
+  const rings = [], sparks = [], confetti = [];
+
+  let phase = "build", closed = false, raf = 0, holdTimer = 0;
+  let revealAt = 0, ringTimer = 0, captionStep = -1;
+  const startAt = performance.now();
+  let last = startAt;
 
   revealing = true;
   syncRollButton();
-  overlay.style.display = "flex";
-  resetParts();
-  void overlay.offsetWidth;
-  parts.forEach(p => { p.style.animation = `starGrowSpin ${STAR_MS}ms linear forwards`; });
+  $("starCardImg").src = m.img;
+  $("starCardImg").alt = m.name;
+  $("starCardName").textContent = m.name;
+  halo.style.transform = "scale(0.2) rotate(0deg)";
+  overlay.style.transform = "";
+  overlay.classList.remove("closing");
+  overlay.dataset.phase = "build";
+  overlay.classList.add("on");
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, W, H);
 
-  let shown = false, done = false;
-  const startedAt = performance.now();
-  const timers = [];
+  const startReveal = () => {
+    if (phase !== "build" || closed) return;
+    phase = "reveal";
+    revealAt = performance.now();
+    overlay.dataset.phase = "reveal";
+    overlay.style.transform = "";
+    displayMeme(m);
+    playMemeSound(m);
 
-  const show = () => {
-    if (shown) return;
-    shown = true;
-    screenFlash(); displayMeme(m); playMemeSound(m);
+    rings.push({ r: 0, a: 1, speed: 1600 * dpr, w: 6 * dpr, hue: 45 });
+    for (let i = 0; i < (reduced ? 60 : 180); i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const sp = (150 + Math.random() * 900) * dpr;
+      const life = 1 + Math.random() * 1.6;
+      sparks.push({
+        x: cx, y: cy, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
+        life, max: life, hue: Math.random() * 360, size: (1.5 + Math.random() * 3.5) * dpr,
+      });
+    }
+    holdTimer = setTimeout(finish, REVEAL_HOLD_MS);
   };
+
   const finish = () => {
-    if (done) return;
-    done = true;
-    timers.forEach(clearTimeout);
-    overlay.removeEventListener("click", onSkip);
-    show();
-    resetParts();
-    overlay.style.display = "none";
-    revealing = false;
-    syncRollButton();
+    if (closed) return;
+    if (phase === "build") startReveal(); // make sure the meme is shown/heard before closing
+    closed = true;
+    clearTimeout(holdTimer);
+    cancelAnimationFrame(raf);
+    window.removeEventListener("resize", resize);
+    overlay.removeEventListener("click", onClick);
+    overlay.classList.add("closing");
+    setTimeout(() => {
+      overlay.classList.remove("on", "closing");
+      overlay.dataset.phase = "";
+      overlay.style.transform = "";
+      ctx.clearRect(0, 0, W, H);
+      revealing = false;
+      syncRollButton();
+    }, 350);
   };
-  const onSkip = () => { if (performance.now() - startedAt > STAR_SKIP_MS) finish(); };
 
-  overlay.addEventListener("click", onSkip);
-  timers.push(setTimeout(show, STAR_MS - 200), setTimeout(finish, STAR_MS));
+  const onClick = () => {
+    const now = performance.now();
+    if (phase === "build") { if (now - startAt > STAR_SKIP_MS) startReveal(); }
+    else if (now - revealAt > 700) finish();
+  };
+  overlay.addEventListener("click", onClick);
+
+  const frame = now => {
+    if (closed) return;
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+
+    ctx.fillStyle = phase === "build" ? "rgba(0,0,0,0.28)" : "rgba(0,0,0,0.18)";
+    ctx.fillRect(0, 0, W, H);
+    ctx.lineCap = "round";
+
+    if (phase === "build") {
+      const p = Math.min(1, (now - startAt) / buildMs);
+      const mult = 1 + 38 * p * p * p;
+
+      for (const s of stars) {
+        s.r += s.v * mult * dt;
+        if (s.r > maxR) { Object.assign(s, mkStar(false)); continue; }
+        const tail = Math.max(0, s.r - s.v * mult * 0.04);
+        ctx.strokeStyle = `hsla(${s.hue},100%,${70 + 30 * p}%,${0.25 + 0.75 * p})`;
+        ctx.lineWidth = s.w * (1 + p);
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(s.a) * tail, cy + Math.sin(s.a) * tail);
+        ctx.lineTo(cx + Math.cos(s.a) * s.r, cy + Math.sin(s.a) * s.r);
+        ctx.stroke();
+      }
+
+      ringTimer += dt;
+      if (ringTimer > 0.7 - 0.4 * p) {
+        ringTimer = 0;
+        rings.push({ r: 0, a: 0.8, speed: (180 + 300 * p) * dpr, w: 2 * dpr, hue: 260 + Math.random() * 60 });
+      }
+
+      const ease = p * p * (3 - 2 * p);
+      halo.style.transform = `scale(${0.2 + 1.7 * ease}) rotate(${p * 1080}deg)`;
+
+      if (!reduced) {
+        const amp = p * p * 10;
+        overlay.style.transform = `translate(${(Math.random() - 0.5) * amp}px, ${(Math.random() - 0.5) * amp}px)`;
+      }
+
+      const step = p < 0.3 ? 0 : p < 0.7 ? 1 : 2;
+      if (step !== captionStep) {
+        captionStep = step;
+        caption.textContent = REVEAL_CAPTIONS[step];
+        caption.dataset.step = step;
+      }
+
+      if (p >= 1) startReveal();
+    } else if (!reduced && now - revealAt < 3000 && Math.random() < 0.6) {
+      confetti.push({
+        x: Math.random() * W, y: -10 * dpr,
+        vx: (Math.random() - 0.5) * 80 * dpr, vy: (140 + Math.random() * 220) * dpr,
+        rot: Math.random() * 6, vr: (Math.random() - 0.5) * 10,
+        hue: Math.random() * 360, w: (5 + Math.random() * 5) * dpr, h: (3 + Math.random() * 4) * dpr,
+      });
+    }
+
+    for (let i = rings.length - 1; i >= 0; i--) {
+      const g = rings[i];
+      g.r += g.speed * dt;
+      g.a -= dt * 0.9;
+      if (g.a <= 0 || g.r > maxR * 1.2) { rings.splice(i, 1); continue; }
+      ctx.strokeStyle = `hsla(${g.hue},100%,75%,${g.a})`;
+      ctx.lineWidth = g.w;
+      ctx.beginPath();
+      ctx.arc(cx, cy, g.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const s = sparks[i];
+      s.vx *= 0.985;
+      s.vy = s.vy * 0.985 + 380 * dpr * dt;
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.life -= dt;
+      if (s.life <= 0) { sparks.splice(i, 1); continue; }
+      ctx.fillStyle = `hsla(${s.hue},100%,65%,${Math.min(1, s.life / s.max)})`;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    for (let i = confetti.length - 1; i >= 0; i--) {
+      const f = confetti[i];
+      f.x += f.vx * dt;
+      f.y += f.vy * dt;
+      f.rot += f.vr * dt;
+      if (f.y > H + 20 * dpr) { confetti.splice(i, 1); continue; }
+      ctx.save();
+      ctx.translate(f.x, f.y);
+      ctx.rotate(f.rot);
+      ctx.fillStyle = `hsl(${f.hue},100%,60%)`;
+      ctx.fillRect(-f.w / 2, -f.h / 2, f.w, f.h);
+      ctx.restore();
+    }
+
+    raf = requestAnimationFrame(frame);
+  };
+  raf = requestAnimationFrame(frame);
 }
 
 // One roll. Returns false when locked or signed out.
@@ -511,26 +672,28 @@ function spendRarity(list, amount) {
 const cooldownCost = () => 3 + 2 * state.upgrades.cooldown;                 // Common
 const doubleCost = () => 1 + Math.floor(state.upgrades.doubleDrop / 5);     // Mythic
 const magnetCost = () => 4 + 2 * state.upgrades.magnet;                     // Uncommon
+const nextCooldownMs = () => Math.max(MIN_COOLDOWN_MS, COOLDOWN_MS - (state.upgrades.cooldown + 1) * COOLDOWN_STEP_MS);
+const secs = ms => (ms / 1000).toFixed(1) + "s";
+const pct = n => Math.round(n * 100);
 
+// Each def: level()/max drive the progress bar (max 1 = one-time unlock); cost() drives the chip + buy state.
 const upgradeDefs = [
   {
-    el: $("upgradeLuckBtn"),
-    label: () => `Luck ${state.upgrades.luck}/${MAX_LUCK} (2 Epic+ memes)`,
-    maxed: () => state.upgrades.luck >= MAX_LUCK,
-    canBuy: () => luckyOwned() >= 2,
-    fail: () => "Need 2 Epic+ memes",
+    id: "cooldown", icon: "bolt", name: "Faster Cooldown",
+    level: () => state.upgrades.cooldown, max: MAX_COOLDOWN_LEVEL,
+    desc: () => `${secs(cooldownMs())} → ${secs(nextCooldownMs())} between rolls`,
+    cost: () => ({ have: rarityOwned(["Common"]), need: cooldownCost(), what: "Common" }),
     buy() {
-      spendLucky(2);
-      state.upgrades.luck++;
-      return ["clover", `Luck upgraded → ${state.upgrades.luck}`, "ok"];
+      spendRarity(["Common"], cooldownCost());
+      state.upgrades.cooldown++;
+      return ["bolt", `Cooldown → ${secs(cooldownMs())}`, "warn"];
     },
   },
   {
-    el: $("unlockQuickRollBtn"),
-    label: () => "Unlock Quick Roll (Gigachad x1)",
-    maxed: () => state.upgrades.quickRollUnlocked,
-    canBuy: () => countOf("Gigachad") >= 1,
-    fail: () => "Need 1 Gigachad",
+    id: "quick", icon: "bolt", name: "Quick Roll",
+    level: () => (state.upgrades.quickRollUnlocked ? 1 : 0), max: 1,
+    desc: () => "Skip the roll animation",
+    cost: () => ({ have: countOf("Gigachad"), need: 1, what: "Gigachad" }),
     buy() {
       removeMeme("Gigachad");
       state.upgrades.quickRollUnlocked = true;
@@ -538,59 +701,32 @@ const upgradeDefs = [
     },
   },
   {
-    el: $("upgradeInventoryBtn"),
-    label: () => "Inventory +5 (Pepe x3)",
-    maxed: () => state.upgrades.inventoryLimit >= MAX_INVENTORY,
-    canBuy: () => countOf("Pepe") >= 3,
-    fail: () => "Need 3 Pepe",
+    id: "auto", icon: "gear", name: "Auto Roll",
+    level: () => (state.upgrades.autoRollUnlocked ? 1 : 0), max: 1,
+    desc: () => "Rolls for you, stops on Legendary+",
+    cost: () => ({ have: rarityOwned(["Legendary"]), need: 1, what: "Legendary" }),
     buy() {
-      removeMeme("Pepe", 3);
-      state.upgrades.inventoryLimit = Math.min(MAX_INVENTORY, state.upgrades.inventoryLimit + 5);
-      return ["box", `Inventory limit → ${state.upgrades.inventoryLimit}`, ""];
+      spendRarity(["Legendary"], 1);
+      state.upgrades.autoRollUnlocked = true;
+      return ["gear", "Auto Roll unlocked!", "warn"];
     },
   },
   {
-    el: $("upgradeBackpackBtn"),
-    label: () => `Inventory +${BACKPACK_SLOTS} (2 Rare)`,
-    maxed: () => state.upgrades.inventoryLimit >= MAX_INVENTORY,
-    canBuy: () => rarityOwned(["Rare"]) >= 2,
-    fail: () => "Need 2 Rare memes",
+    id: "luck", icon: "clover", name: "Luck",
+    level: () => state.upgrades.luck, max: MAX_LUCK,
+    desc: () => `Epic+ odds +${pct(state.upgrades.luck * LUCK_PER_LEVEL)}% → +${pct((state.upgrades.luck + 1) * LUCK_PER_LEVEL)}%`,
+    cost: () => ({ have: luckyOwned(), need: 2, what: "Epic+" }),
     buy() {
-      spendRarity(["Rare"], 2);
-      state.upgrades.inventoryLimit = Math.min(MAX_INVENTORY, state.upgrades.inventoryLimit + BACKPACK_SLOTS);
-      return ["box", `Inventory limit → ${state.upgrades.inventoryLimit}`, ""];
+      spendLucky(2);
+      state.upgrades.luck++;
+      return ["clover", `Luck upgraded → ${state.upgrades.luck}`, "ok"];
     },
   },
   {
-    el: $("upgradeCooldownBtn"),
-    label: () => `Faster Cooldown ${state.upgrades.cooldown}/${MAX_COOLDOWN_LEVEL} (${cooldownCost()} Common)`,
-    maxed: () => state.upgrades.cooldown >= MAX_COOLDOWN_LEVEL,
-    canBuy: () => rarityOwned(["Common"]) >= cooldownCost(),
-    fail: () => `Need ${cooldownCost()} Common memes`,
-    buy() {
-      spendRarity(["Common"], cooldownCost());
-      state.upgrades.cooldown++;
-      return ["bolt", `Cooldown → ${(cooldownMs() / 1000).toFixed(1)}s`, "warn"];
-    },
-  },
-  {
-    el: $("upgradeDoubleBtn"),
-    label: () => `Double Drop ${Math.round(state.upgrades.doubleDrop * DOUBLE_PER_LEVEL * 100)}% (${doubleCost()} Mythic)`,
-    maxed: () => state.upgrades.doubleDrop >= MAX_DOUBLE_LEVEL,
-    canBuy: () => rarityOwned(["Mythic"]) >= doubleCost(),
-    fail: () => `Need ${doubleCost()} Mythic`,
-    buy() {
-      spendRarity(["Mythic"], doubleCost());
-      state.upgrades.doubleDrop++;
-      return ["dice", `Double drop chance → ${Math.round(state.upgrades.doubleDrop * DOUBLE_PER_LEVEL * 100)}%`, "ok"];
-    },
-  },
-  {
-    el: $("upgradeMagnetBtn"),
-    label: () => `Mythic Magnet ${state.upgrades.magnet}/${MAX_MAGNET_LEVEL} (${magnetCost()} Uncommon)`,
-    maxed: () => state.upgrades.magnet >= MAX_MAGNET_LEVEL,
-    canBuy: () => rarityOwned(["Uncommon"]) >= magnetCost(),
-    fail: () => `Need ${magnetCost()} Uncommon memes`,
+    id: "magnet", icon: "crown", name: "Mythic Magnet",
+    level: () => state.upgrades.magnet, max: MAX_MAGNET_LEVEL,
+    desc: () => `Mythic odds +${pct(state.upgrades.magnet * MAGNET_PER_LEVEL)}% → +${pct((state.upgrades.magnet + 1) * MAGNET_PER_LEVEL)}%`,
+    cost: () => ({ have: rarityOwned(["Uncommon"]), need: magnetCost(), what: "Uncommon" }),
     buy() {
       spendRarity(["Uncommon"], magnetCost());
       state.upgrades.magnet++;
@@ -598,37 +734,108 @@ const upgradeDefs = [
     },
   },
   {
-    el: $("unlockAutoRollBtn"),
-    label: () => "Unlock Auto Roll (1 Legendary)",
-    maxed: () => state.upgrades.autoRollUnlocked,
-    canBuy: () => rarityOwned(["Legendary"]) >= 1,
-    fail: () => "Need 1 Legendary",
+    id: "double", icon: "dice", name: "Double Drop",
+    level: () => state.upgrades.doubleDrop, max: MAX_DOUBLE_LEVEL,
+    desc: () => `${pct(state.upgrades.doubleDrop * DOUBLE_PER_LEVEL)}% → ${pct((state.upgrades.doubleDrop + 1) * DOUBLE_PER_LEVEL)}% chance for 2 copies`,
+    cost: () => ({ have: rarityOwned(["Mythic"]), need: doubleCost(), what: "Mythic" }),
     buy() {
-      spendRarity(["Legendary"], 1);
-      state.upgrades.autoRollUnlocked = true;
-      return ["gear", "Auto Roll unlocked!", "warn"];
+      spendRarity(["Mythic"], doubleCost());
+      state.upgrades.doubleDrop++;
+      return ["dice", `Double drop chance → ${pct(state.upgrades.doubleDrop * DOUBLE_PER_LEVEL)}%`, "ok"];
+    },
+  },
+  {
+    id: "inv5", icon: "box", name: "Inventory +5",
+    level: () => state.upgrades.inventoryLimit, max: MAX_INVENTORY,
+    desc: () => `Limit ${state.upgrades.inventoryLimit} → ${Math.min(MAX_INVENTORY, state.upgrades.inventoryLimit + 5)}`,
+    cost: () => ({ have: countOf("Pepe"), need: 3, what: "Pepe" }),
+    buy() {
+      removeMeme("Pepe", 3);
+      state.upgrades.inventoryLimit = Math.min(MAX_INVENTORY, state.upgrades.inventoryLimit + 5);
+      return ["box", `Inventory limit → ${state.upgrades.inventoryLimit}`, ""];
+    },
+  },
+  {
+    id: "inv25", icon: "box", name: `Inventory +${BACKPACK_SLOTS}`,
+    level: () => state.upgrades.inventoryLimit, max: MAX_INVENTORY,
+    desc: () => `Limit ${state.upgrades.inventoryLimit} → ${Math.min(MAX_INVENTORY, state.upgrades.inventoryLimit + BACKPACK_SLOTS)}`,
+    cost: () => ({ have: rarityOwned(["Rare"]), need: 2, what: "Rare" }),
+    buy() {
+      spendRarity(["Rare"], 2);
+      state.upgrades.inventoryLimit = Math.min(MAX_INVENTORY, state.upgrades.inventoryLimit + BACKPACK_SLOTS);
+      return ["box", `Inventory limit → ${state.upgrades.inventoryLimit}`, ""];
     },
   },
 ];
 
-upgradeDefs.forEach(def => def.el.addEventListener("click", () => {
-  if (def.maxed()) return;
-  if (!def.canBuy()) { setStatus(upgradeStatus, "err", def.fail()); return; }
+function buyUpgrade(def) {
+  if (def.level() >= def.max) return;
+  const c = def.cost();
+  if (c.have < c.need) { setStatus(upgradeStatus, "err", `Need ${c.need} ${c.what}`); return; }
 
   const [iconName, text, cls] = def.buy();
   upgradeStatus.innerHTML = withIcon(iconName, text, cls);
   updateInventory();
-}));
+}
 
+function buildUpgradeCard(def) {
+  const card = document.createElement("div");
+  card.className = "up-card";
+  card.innerHTML =
+    `<div class="up-ico">${icon(def.icon)}</div>` +
+    `<div class="up-main">` +
+      `<div class="up-top"><span class="up-name"></span><span class="up-lvl"></span></div>` +
+      `<div class="up-desc"></div>` +
+      `<div class="up-bar"><i></i></div>` +
+      `<div class="up-costs"></div>` +
+    `</div>` +
+    `<button class="up-buy" type="button">Buy</button>`;
+
+  const q = sel => card.querySelector(sel);
+  def.ui = {
+    card, lvl: q(".up-lvl"), desc: q(".up-desc"), bar: q(".up-bar"),
+    fill: q(".up-bar i"), costs: q(".up-costs"), buy: q(".up-buy"),
+  };
+  q(".up-name").textContent = def.name;
+  def.ui.buy.addEventListener("click", () => buyUpgrade(def));
+  $("upgradeList").appendChild(card);
+}
+upgradeDefs.forEach(buildUpgradeCard);
+
+const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
+
+// Updates cards in place (no DOM rebuild), so it is safe to call every second without eating clicks.
 function renderUpgrades() {
-  upgradeDefs.forEach(def => {
-    def.el.style.display = def.maxed() ? "none" : "block";
-    def.el.textContent = def.label();
-    def.el.disabled = def.maxed() || !def.canBuy();
-  });
+  for (const def of upgradeDefs) {
+    const ui = def.ui;
+    const lvl = def.level();
+    const unlock = def.max === 1;
+    const done = lvl >= def.max;
+    const c = def.cost();
+    const can = !done && c.have >= c.need;
+
+    setText(ui.lvl, unlock ? (done ? "UNLOCKED" : "LOCKED") : done ? "MAX" : `${lvl}/${def.max}`);
+    setText(ui.desc, done ? (unlock ? "Active" : "Maxed out") : def.desc());
+    ui.bar.hidden = unlock;
+    ui.fill.style.width = `${Math.min(100, (lvl / def.max) * 100)}%`;
+
+    const key = done ? "" : `${c.have}|${c.need}|${c.what}`;
+    if (ui.costs.dataset.key !== key) {
+      ui.costs.dataset.key = key;
+      ui.costs.innerHTML = done ? "" : `<span class="chip${can ? " ok" : ""}">${c.have}/${c.need} ${esc(c.what)}</span>`;
+    }
+
+    ui.card.classList.toggle("ready", can);
+    ui.card.classList.toggle("maxed", done);
+    ui.buy.disabled = !can;
+    setText(ui.buy, done ? (unlock ? "Owned" : "Max") : "Buy");
+  }
   quickRollBtn.disabled = !state.upgrades.quickRollUnlocked;
   autoRollBtn.disabled = !state.upgrades.autoRollUnlocked;
 }
+
+// Keep the panel honest: inventory can change from broadcasts, admin gifts, other tabs' saves, etc.
+setInterval(() => { if (!document.hidden) renderUpgrades(); }, UPGRADE_REFRESH_MS);
 
 function renderStats() {
   const { stats } = state;
@@ -748,12 +955,20 @@ function mountPlacedMeme(data) {
   const del = document.createElement("button");
   del.className = "placed-del";
   del.innerHTML = icon("x");
-  del.setAttribute("aria-label", `Remove ${data.name}`);
+  del.setAttribute("aria-label", `Return ${data.name} to inventory`);
+  del.title = "Return to inventory";
   del.addEventListener("click", e => {
     e.stopPropagation();
+    const known = !!findMeme(data.name);
+    if (known && inventoryCount() >= state.upgrades.inventoryLimit) {
+      showFloatingText(withIcon("box", "Inventory full — can't pick it up"), "#ff757c");
+      return;
+    }
     state.placed = state.placed.filter(p => p.id !== data.id);
     wrap.remove();
-    saveUserData();
+    if (known) addMeme(data.name);
+    updateInventory(); // re-renders inventory + upgrades and saves
+    if (known) showFloatingText(withIcon("box", `${data.name} returned to inventory`), "#4dff88");
   });
 
   wrap.append(img, del);
@@ -1053,6 +1268,7 @@ function openPanel(id) {
   const willOpen = !!id && !$(id).classList.contains("open");
   PANELS.forEach(p => $(p).classList.toggle("open", willOpen && p === id));
   dockButtons.forEach(b => b.classList.toggle("active", willOpen && b.dataset.panel === id));
+  if (willOpen && id === "upgradePanel") renderUpgrades();
 }
 const showPanel = id => { openPanel(null); openPanel(id); };
 
