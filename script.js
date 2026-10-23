@@ -32,9 +32,9 @@ const auth = getAuth(app);
 const db = getDatabase(app);
 
 const COOLDOWN_MS = 4000;
-const REVEAL_BUILD_MS = 4200;  // Secret cutscene: star charges up
-const REVEAL_HOLD_MS = 5000;   // Secret cutscene: reveal card stays before auto-close
-const STAR_SKIP_MS = 1200;     // click-to-skip unlocks after this long
+const REVEAL_CHARGE_MS = 2000; // Secret reveal: card shakes and charges
+const REVEAL_HOLD_MS = 4500;   // Secret reveal: card stays up before auto-close
+const STAR_SKIP_MS = 600;      // click-to-skip unlocks after this long
 const UPGRADE_REFRESH_MS = 1000;
 const ROLL_STEPS = 18;         // how many frames the roll animation shows
 const MAX_LUCK = 10;
@@ -364,93 +364,52 @@ function finishRoll(m) {
   saveUserData();
 }
 
-const REVEAL_CAPTIONS = ["something is stirring…", "it's getting closer…", "SECRET"];
-
-// Cutscene: hyperspace streaks + charging star -> white-out -> burst + reveal card.
-// Click during the build (after STAR_SKIP_MS) jumps to the reveal; click on the card closes it.
+// Secret reveal: a sealed card shakes and charges -> flash + flip -> holographic card.
+// Click during the charge (after STAR_SKIP_MS) flips immediately; click on the card closes it.
 function playStarReveal(m) {
   const overlay = $("starOverlay");
-  const canvas = $("starCanvas");
-  const ctx = canvas.getContext("2d");
-  const halo = $("starHalo");
-  const caption = $("starCaption");
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const buildMs = reduced ? 1200 : REVEAL_BUILD_MS;
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const chargeMs = reduced ? 600 : REVEAL_CHARGE_MS;
 
-  let W = 0, H = 0, cx = 0, cy = 0, maxR = 1;
-  const resize = () => {
-    W = canvas.width = Math.round(innerWidth * dpr);
-    H = canvas.height = Math.round(innerHeight * dpr);
-    cx = W / 2; cy = H / 2; maxR = Math.hypot(cx, cy);
-  };
-  resize();
-  window.addEventListener("resize", resize);
-
-  const mkStar = anywhere => ({
-    a: Math.random() * Math.PI * 2,
-    r: anywhere ? Math.random() * maxR : Math.random() * 40 * dpr,
-    v: (30 + Math.random() * 90) * dpr,
-    hue: 190 + Math.random() * 130,
-    w: (0.6 + Math.random() * 1.4) * dpr,
-  });
-  const stars = Array.from({ length: reduced ? 70 : 220 }, () => mkStar(true));
-  const rings = [], sparks = [], confetti = [];
-
-  let phase = "build", closed = false, raf = 0, holdTimer = 0;
-  let revealAt = 0, ringTimer = 0, captionStep = -1;
+  let phase = "charge";
+  let closed = false;
+  let flipTimer = 0, settleTimer = 0, holdTimer = 0, flipAt = 0;
   const startAt = performance.now();
-  let last = startAt;
 
   revealing = true;
   syncRollButton();
   $("starCardImg").src = m.img;
   $("starCardImg").alt = m.name;
   $("starCardName").textContent = m.name;
-  halo.style.transform = "scale(0.2) rotate(0deg)";
-  overlay.style.transform = "";
+  overlay.style.setProperty("--charge", chargeMs + "ms");
   overlay.classList.remove("closing");
-  overlay.dataset.phase = "build";
+  overlay.dataset.phase = "charge";
   overlay.classList.add("on");
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, W, H);
 
-  const startReveal = () => {
-    if (phase !== "build" || closed) return;
-    phase = "reveal";
-    revealAt = performance.now();
-    overlay.dataset.phase = "reveal";
-    overlay.style.transform = "";
+  const flip = () => {
+    if (phase !== "charge" || closed) return;
+    phase = "flip";
+    flipAt = performance.now();
+    clearTimeout(flipTimer);
+    overlay.dataset.phase = "flip";
     displayMeme(m);
     playMemeSound(m);
-
-    rings.push({ r: 0, a: 1, speed: 1600 * dpr, w: 6 * dpr, hue: 45 });
-    for (let i = 0; i < (reduced ? 60 : 180); i++) {
-      const ang = Math.random() * Math.PI * 2;
-      const sp = (150 + Math.random() * 900) * dpr;
-      const life = 1 + Math.random() * 1.6;
-      sparks.push({
-        x: cx, y: cy, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
-        life, max: life, hue: Math.random() * 360, size: (1.5 + Math.random() * 3.5) * dpr,
-      });
-    }
+    settleTimer = setTimeout(() => {
+      if (!closed && phase === "flip") { phase = "show"; overlay.dataset.phase = "show"; }
+    }, 900);
     holdTimer = setTimeout(finish, REVEAL_HOLD_MS);
   };
 
   const finish = () => {
     if (closed) return;
-    if (phase === "build") startReveal(); // make sure the meme is shown/heard before closing
+    if (phase === "charge") flip(); // make sure the meme is shown/heard before closing
     closed = true;
-    clearTimeout(holdTimer);
-    cancelAnimationFrame(raf);
-    window.removeEventListener("resize", resize);
+    clearTimeout(flipTimer); clearTimeout(settleTimer); clearTimeout(holdTimer);
     overlay.removeEventListener("click", onClick);
     overlay.classList.add("closing");
     setTimeout(() => {
       overlay.classList.remove("on", "closing");
       overlay.dataset.phase = "";
-      overlay.style.transform = "";
-      ctx.clearRect(0, 0, W, H);
       revealing = false;
       syncRollButton();
     }, 350);
@@ -458,110 +417,12 @@ function playStarReveal(m) {
 
   const onClick = () => {
     const now = performance.now();
-    if (phase === "build") { if (now - startAt > STAR_SKIP_MS) startReveal(); }
-    else if (now - revealAt > 700) finish();
+    if (phase === "charge") { if (now - startAt > STAR_SKIP_MS) flip(); }
+    else if (now - flipAt > 600) finish();
   };
+
   overlay.addEventListener("click", onClick);
-
-  const frame = now => {
-    if (closed) return;
-    const dt = Math.min(0.05, (now - last) / 1000);
-    last = now;
-
-    ctx.fillStyle = phase === "build" ? "rgba(0,0,0,0.28)" : "rgba(0,0,0,0.18)";
-    ctx.fillRect(0, 0, W, H);
-    ctx.lineCap = "round";
-
-    if (phase === "build") {
-      const p = Math.min(1, (now - startAt) / buildMs);
-      const mult = 1 + 38 * p * p * p;
-
-      for (const s of stars) {
-        s.r += s.v * mult * dt;
-        if (s.r > maxR) { Object.assign(s, mkStar(false)); continue; }
-        const tail = Math.max(0, s.r - s.v * mult * 0.04);
-        ctx.strokeStyle = `hsla(${s.hue},100%,${70 + 30 * p}%,${0.25 + 0.75 * p})`;
-        ctx.lineWidth = s.w * (1 + p);
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(s.a) * tail, cy + Math.sin(s.a) * tail);
-        ctx.lineTo(cx + Math.cos(s.a) * s.r, cy + Math.sin(s.a) * s.r);
-        ctx.stroke();
-      }
-
-      ringTimer += dt;
-      if (ringTimer > 0.7 - 0.4 * p) {
-        ringTimer = 0;
-        rings.push({ r: 0, a: 0.8, speed: (180 + 300 * p) * dpr, w: 2 * dpr, hue: 260 + Math.random() * 60 });
-      }
-
-      const ease = p * p * (3 - 2 * p);
-      halo.style.transform = `scale(${0.2 + 1.7 * ease}) rotate(${p * 1080}deg)`;
-
-      if (!reduced) {
-        const amp = p * p * 10;
-        overlay.style.transform = `translate(${(Math.random() - 0.5) * amp}px, ${(Math.random() - 0.5) * amp}px)`;
-      }
-
-      const step = p < 0.3 ? 0 : p < 0.7 ? 1 : 2;
-      if (step !== captionStep) {
-        captionStep = step;
-        caption.textContent = REVEAL_CAPTIONS[step];
-        caption.dataset.step = step;
-      }
-
-      if (p >= 1) startReveal();
-    } else if (!reduced && now - revealAt < 3000 && Math.random() < 0.6) {
-      confetti.push({
-        x: Math.random() * W, y: -10 * dpr,
-        vx: (Math.random() - 0.5) * 80 * dpr, vy: (140 + Math.random() * 220) * dpr,
-        rot: Math.random() * 6, vr: (Math.random() - 0.5) * 10,
-        hue: Math.random() * 360, w: (5 + Math.random() * 5) * dpr, h: (3 + Math.random() * 4) * dpr,
-      });
-    }
-
-    for (let i = rings.length - 1; i >= 0; i--) {
-      const g = rings[i];
-      g.r += g.speed * dt;
-      g.a -= dt * 0.9;
-      if (g.a <= 0 || g.r > maxR * 1.2) { rings.splice(i, 1); continue; }
-      ctx.strokeStyle = `hsla(${g.hue},100%,75%,${g.a})`;
-      ctx.lineWidth = g.w;
-      ctx.beginPath();
-      ctx.arc(cx, cy, g.r, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    for (let i = sparks.length - 1; i >= 0; i--) {
-      const s = sparks[i];
-      s.vx *= 0.985;
-      s.vy = s.vy * 0.985 + 380 * dpr * dt;
-      s.x += s.vx * dt;
-      s.y += s.vy * dt;
-      s.life -= dt;
-      if (s.life <= 0) { sparks.splice(i, 1); continue; }
-      ctx.fillStyle = `hsla(${s.hue},100%,65%,${Math.min(1, s.life / s.max)})`;
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    for (let i = confetti.length - 1; i >= 0; i--) {
-      const f = confetti[i];
-      f.x += f.vx * dt;
-      f.y += f.vy * dt;
-      f.rot += f.vr * dt;
-      if (f.y > H + 20 * dpr) { confetti.splice(i, 1); continue; }
-      ctx.save();
-      ctx.translate(f.x, f.y);
-      ctx.rotate(f.rot);
-      ctx.fillStyle = `hsl(${f.hue},100%,60%)`;
-      ctx.fillRect(-f.w / 2, -f.h / 2, f.w, f.h);
-      ctx.restore();
-    }
-
-    raf = requestAnimationFrame(frame);
-  };
-  raf = requestAnimationFrame(frame);
+  flipTimer = setTimeout(flip, chargeMs);
 }
 
 // One roll. Returns false when locked or signed out.
@@ -610,35 +471,151 @@ setInterval(() => { if (autoRoll && state.uid) rollOnce(); }, 250);
    5. INVENTORY & UPGRADES
    ============================================================ */
 
-function renderInventory() {
-  inventoryEl.replaceChildren(
-    ...Object.entries(state.inventory).map(([name, count]) => buildInventoryRow(name, count))
-  );
+const RARITY_ORDER = Object.keys(RARITY_COLORS);
+const rarityRank = m => (m ? RARITY_ORDER.indexOf(m.rarity) : -1);
+// Secret's canonical grey is unreadable on the dark UI, so the inventory uses a violet accent for it.
+const accentOf = m => (!m ? "#777" : m.rarity === "Secret" ? "#b84dff" : m.color);
+
+const INV_PREF_KEY = "memeRng.invView";
+const INV_SORTS = ["rarity", "rarityAsc", "name", "count"];
+const invView = { sort: "rarity", filter: "all", query: "" };
+try {
+  const saved = JSON.parse(localStorage.getItem(INV_PREF_KEY) || "{}");
+  if (INV_SORTS.includes(saved.sort)) invView.sort = saved.sort;
+  if (saved.filter === "all" || RARITY_ORDER.includes(saved.filter)) invView.filter = saved.filter;
+} catch { /* storage unavailable: defaults are fine */ }
+const saveInvView = () => {
+  try { localStorage.setItem(INV_PREF_KEY, JSON.stringify({ sort: invView.sort, filter: invView.filter })); } catch { /* ignore */ }
+};
+
+const invComparators = {
+  rarity: (a, b) => rarityRank(b.m) - rarityRank(a.m) || a.name.localeCompare(b.name),
+  rarityAsc: (a, b) => rarityRank(a.m) - rarityRank(b.m) || a.name.localeCompare(b.name),
+  name: (a, b) => a.name.localeCompare(b.name),
+  count: (a, b) => b.count - a.count || a.name.localeCompare(b.name),
+};
+
+const invFilterEl = $("invFilters");
+const invChips = new Map();
+
+function buildInvFilters() {
+  const make = (key, label, color) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "inv-chip";
+    if (color) chip.style.setProperty("--rc", color);
+    chip.innerHTML = (color ? "<i></i>" : "") + `<span class="chip-label"></span>`;
+    chip.addEventListener("click", () => {
+      invView.filter = invView.filter === key && key !== "all" ? "all" : key;
+      saveInvView();
+      renderInventory();
+    });
+    invFilterEl.appendChild(chip);
+    invChips.set(key, { chip, label, text: chip.querySelector(".chip-label") });
+  };
+  make("all", "All");
+  RARITY_ORDER.forEach(r => make(r, r, accentOf({ rarity: r, color: RARITY_COLORS[r] })));
+}
+buildInvFilters();
+
+// Capacity bar + filter chip counts. Cheap, so it runs on every inventory render.
+function renderInvChrome(entries) {
+  const total = inventoryCount();
+  const limit = state.upgrades.inventoryLimit;
+  const ratio = limit ? total / limit : 0;
+
+  setText($("invCapText"), `${total} / ${limit}`);
+  $("invCapFill").style.width = `${Math.min(100, ratio * 100)}%`;
+  $("invCap").classList.toggle("warn", ratio >= 0.9 && ratio < 1);
+  $("invCap").classList.toggle("full", ratio >= 1);
+
+  const perRarity = {};
+  for (const e of entries) {
+    const r = e.m?.rarity;
+    if (r) perRarity[r] = (perRarity[r] || 0) + e.count;
+  }
+  for (const [key, c] of invChips) {
+    const n = key === "all" ? total : perRarity[key] || 0;
+    setText(c.text, `${c.label} ${n}`);
+    c.chip.classList.toggle("active", invView.filter === key);
+    c.chip.classList.toggle("zero", n === 0 && key !== "all");
+  }
 }
 
-function buildInventoryRow(name, count) {
+function renderInventory() {
+  const entries = Object.entries(state.inventory).map(([name, count]) => ({ name, count, m: findMeme(name) }));
+  renderInvChrome(entries);
+
+  const q = invView.query.trim().toLowerCase();
+  const rows = entries
+    .filter(e => (invView.filter === "all" || e.m?.rarity === invView.filter) && (!q || e.name.toLowerCase().includes(q)))
+    .sort(invComparators[invView.sort]);
+
+  if (!rows.length) {
+    const empty = document.createElement("div");
+    empty.className = "inv-empty";
+    empty.textContent = entries.length ? "No memes match this filter." : "Nothing here yet. Roll some memes!";
+    inventoryEl.replaceChildren(empty);
+    return;
+  }
+  inventoryEl.replaceChildren(...rows.map(buildInventoryRow));
+}
+
+function buildInventoryRow({ name, count, m }) {
   const row = document.createElement("div");
   row.className = "inv-item" + (selectedMeme === name ? " selected" : "");
   row.dataset.name = name;
+  row.dataset.rarity = m?.rarity || "";
+  row.style.setProperty("--rc", accentOf(m));
+  row.title = `${name}${m ? " — " + m.rarity : ""}\nClick to place on the screen`;
 
-  const label = document.createElement("span");
-  label.textContent = `${name} [${count}x]`;
+  const thumb = document.createElement("img");
+  thumb.className = "inv-thumb";
+  thumb.src = m?.img || "";
+  thumb.alt = "";
+  thumb.loading = "lazy";
+  thumb.draggable = false;
+
+  const info = document.createElement("div");
+  info.className = "inv-info";
+  const nameEl = document.createElement("div");
+  nameEl.className = "inv-name";
+  nameEl.textContent = name;
+  const rarityEl = document.createElement("div");
+  rarityEl.className = "inv-rarity";
+  rarityEl.textContent = m?.rarity || "Unknown";
+  info.append(nameEl, rarityEl);
+
+  const countEl = document.createElement("div");
+  countEl.className = "inv-count";
+  countEl.textContent = `×${count}`;
 
   const del = document.createElement("button");
   del.className = "inv-del";
   del.textContent = "−";
+  del.title = "Discard one";
   del.setAttribute("aria-label", `Discard one ${name}`);
   del.addEventListener("click", e => {
     e.stopPropagation();
+    // Epic and above are hard to get back, so ask first.
+    if (rarityRank(m) >= RARITY_ORDER.indexOf("Epic") && !confirm(`Discard one ${name} (${m.rarity})?`)) return;
     removeMeme(name);
     if (!countOf(name) && selectedMeme === name) clearSelection();
     updateInventory();
   });
 
   row.addEventListener("click", () => selectMeme(name));
-  row.append(label, del);
+  row.append(thumb, info, countEl, del);
   return row;
 }
+
+$("invSearch").addEventListener("input", e => { invView.query = e.target.value; renderInventory(); });
+$("invSort").value = invView.sort;
+$("invSort").addEventListener("change", e => {
+  invView.sort = INV_SORTS.includes(e.target.value) ? e.target.value : "rarity";
+  saveInvView();
+  renderInventory();
+});
 
 // Re-render everything that depends on the inventory, then save.
 function updateInventory() {
