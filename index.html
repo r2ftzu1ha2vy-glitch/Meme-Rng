@@ -140,21 +140,22 @@
 <!-- UPGRADES -->
 <div id="upgradePanel">
   <h3>Upgrades</h3>
-  <button id="upgradeLuckBtn">Upgrade Luck (2 Epic+ memes)</button>
-  <button id="unlockQuickRollBtn">Unlock Quick Roll (Gigachad x1)</button>
-  <button id="upgradeInventoryBtn">Inventory +5 (Pepe x3)</button>
-  <button id="upgradeBackpackBtn"></button>
-  <button id="upgradeCooldownBtn"></button>
-  <button id="upgradeDoubleBtn"></button>
-  <button id="upgradeMagnetBtn"></button>
-  <button id="unlockAutoRollBtn"></button>
+  <div id="upgradeList"></div>
   <div id="upgradeStatus"></div>
 </div>
 
-<!-- STAR OVERLAY -->
-<div id="starOverlay">
-  <div id="starGlow"></div>
-  <div id="starReveal"></div>
+<!-- SECRET REVEAL CUTSCENE -->
+<div id="starOverlay" data-phase="">
+  <canvas id="starCanvas"></canvas>
+  <div id="starHalo"><div id="starGlow"></div></div>
+  <div id="starCaption" aria-live="polite"></div>
+  <div id="starFlash"></div>
+  <div id="starCard">
+    <div class="sc-tag">SECRET</div>
+    <div class="sc-frame"><img id="starCardImg" src="" alt=""></div>
+    <div id="starCardName"></div>
+    <div class="sc-hint">tap to continue</div>
+  </div>
 </div>
 
 <div id="globalMessageContainer"></div>
